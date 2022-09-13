@@ -12,10 +12,12 @@ library(RColorBrewer)
 
 # COMMAND ----------
 
-figDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence"
+figDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence_20220913"
 
 inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-VariantSummaries.tsv"
-df <- read.csv(inFile,sep="\t")
+# load and order by variant score
+df <- read.csv(inFile,sep="\t") %>%
+  dplyr::arrange(desc(civic_variant_evidence_score))
 
 inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-AssertionSummaries.tsv"
 assertions <- read.csv(inFile,sep="\t")
@@ -25,15 +27,8 @@ clinical <- read.csv(inFile,sep="\t")
 clinical$chromosomeNum <- as.character(clinical$chromosome)
 clinical$chr <- paste0("chr",clinical$chromosomeNum)
 
-
 inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-VariantGroupSummaries.tsv"
 varGroups <- read.csv(inFile,sep="\t")
-
-## order by CIViC variant score
-
-df <- df %>%
-  dplyr::arrange(desc(civic_variant_evidence_score))
-
 
 # COMMAND ----------
 ### load MOAlmanac which is similar to CIViC
@@ -66,38 +61,22 @@ ggplot(cnts.moa.type,aes(x=feature_type,y=n))+
   theme(plot.title = element_text(hjust = 0.5))+
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
+### load MSK-IMPACT
+inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/impact_2017_annotated_per_variant.tsv"
+msk <- read.csv(inFile,sep="\t")
+inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/msk_impact_data_clinical_sample2.txt"
+patient.msk <- read.csv(inFile,sep="\t")
+msk$Chromosome.str <- paste0("chr",msk$Chromosome)
+msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
+
+# join clinical info onto variant info
+all(msk$Tumor_Sample_Barcode %in% patient.msk$SAMPLE_ID)
+
+msk <- msk %>% 
+  dplyr::left_join(patient.msk,by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
+
 # COMMAND ----------
-### combine MOA and CIViC data
-
-## create cancer type maps
-#iCMmatch <- civic.cType.cnt$Disease %in% msk.cType.cnt$CANCER_TYPE
-#CivicMSKCancerTypeMap <- data.frame(CivicCancerType=civic.cType.cnt$Disease)
-#rownames(CivicMSKCancerTypeMap) <- CivicMSKCancerTypeMap$CivicCancerType
-#CivicMSKCancerTypeMap[iCMmatch,"MskCancerType"] <- as.character(civic.cType.cnt$Disease[iCMmatch])
-mapF <-  paste0(figDir,"/civic_cancer_type_map.txt")
-#write.table(CivicMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
-CivicMSKCancerTypeMap <- read.csv(mapF,sep="\t")
-clinical <- clinical %>%
-  dplyr::left_join(CivicMSKCancerTypeMap,by=c("disease"="CivicCancerType"))
-table(clinical$MskCancerType,exclude=NULL)
-# what fraction of entries are still missing MSK cancer type assignment
-print(sum(is.na(clinical$MskCancerType))/dim(clinical)[[1]])
-
-#iCMmatch <- moa.cType.cnt$disease %in% msk.cType.cnt$CANCER_TYPE
-#MoaMSKCancerTypeMap <- data.frame(MoaCancerType=moa.cType.cnt$disease)
-#rownames(MoaMSKCancerTypeMap) <- MoaMSKCancerTypeMap$CivicCancerType
-#MoaMSKCancerTypeMap[iCMmatch,"MskCancerType"] <- as.character(moa.cType.cnt$disease[iCMmatch])
-mapF <-  paste0(figDir,"/moa_cancer_type_map.txt")
-#write.table(MoaMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
-MoaMSKCancerTypeMap <- read.csv(mapF,sep="\t")
-MoaMSKCancerTypeMap$MoaCancerType <- as.character(MoaMSKCancerTypeMap$MoaCancerType)
-moa <- moa %>%
-  dplyr::left_join(MoaMSKCancerTypeMap,by=c("disease"="MoaCancerType"))
-table(moa$MskCancerType,exclude=NULL)
-# what fraction of entries are still missing MSK cancer type assignment
-print(sum(is.na(moa$MskCancerType))/dim(moa)[[1]])
-
-
+### add matching columns
 moa$source <- "MOAlmanac"
 moa$FDAApproved <- NA
 moa$Indicated <- moa$predictive_implication
@@ -130,6 +109,57 @@ clinical$pos <- clinical$start
 clinical$ref <- clinical$reference_bases
 clinical$alt <- clinical$variant_bases
 
+
+### combine MOA and CIViC data
+
+### create cancer type maps CIVIC-->MSK and MOA-->MSK
+civic.cType.cnt <- clinical %>%
+  dplyr::group_by(Disease) %>%
+  dplyr::summarise(number.of.subjects=dplyr::n()) %>%
+  dplyr::arrange(desc(number.of.subjects))
+
+moa.cType.cnt <- moa %>%
+  dplyr::group_by(disease) %>%
+  dplyr::summarise(number.of.subjects=dplyr::n()) %>%
+  dplyr::arrange(desc(number.of.subjects))
+
+### which are the most common cancer types in msk, moa, and civic
+msk.cType.cnt <- msk %>%
+  dplyr::group_by(CANCER_TYPE) %>%
+  dplyr::summarise(number.of.subjects=dplyr::n_distinct(PATIENT_ID)) %>%
+  dplyr::arrange(desc(number.of.subjects))
+outF <-  paste0(figDir,"/msk_cancer_types.txt")
+write.table(msk.cType.cnt,outF,row.names=F,quote=F,sep="\t")
+
+## create cancer type maps
+iCMmatch <- civic.cType.cnt$Disease %in% msk.cType.cnt$CANCER_TYPE
+CivicMSKCancerTypeMap <- data.frame(CivicCancerType=civic.cType.cnt$Disease)
+rownames(CivicMSKCancerTypeMap) <- CivicMSKCancerTypeMap$CivicCancerType
+CivicMSKCancerTypeMap[iCMmatch,"MskCancerType"] <- as.character(civic.cType.cnt$Disease[iCMmatch])
+mapF <-  paste0(figDir,"/civic_cancer_type_map.txt")
+write.table(CivicMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
+CivicMSKCancerTypeMap <- read.csv(mapF,sep="\t")
+clinical <- clinical %>%
+  dplyr::left_join(CivicMSKCancerTypeMap,by=c("disease"="CivicCancerType"))
+table(clinical$MskCancerType,exclude=NULL)
+# what fraction of entries are still missing MSK cancer type assignment
+print(sum(is.na(clinical$MskCancerType))/dim(clinical)[[1]])
+
+iCMmatch <- moa.cType.cnt$disease %in% msk.cType.cnt$CANCER_TYPE
+MoaMSKCancerTypeMap <- data.frame(MoaCancerType=moa.cType.cnt$disease)
+rownames(MoaMSKCancerTypeMap) <- MoaMSKCancerTypeMap$CivicCancerType
+MoaMSKCancerTypeMap[iCMmatch,"MskCancerType"] <- as.character(moa.cType.cnt$disease[iCMmatch])
+mapF <-  paste0(figDir,"/moa_cancer_type_map.txt")
+write.table(MoaMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
+MoaMSKCancerTypeMap <- read.csv(mapF,sep="\t")
+MoaMSKCancerTypeMap$MoaCancerType <- as.character(MoaMSKCancerTypeMap$MoaCancerType)
+moa <- moa %>%
+  dplyr::left_join(MoaMSKCancerTypeMap,by=c("disease"="MoaCancerType"))
+table(moa$MskCancerType,exclude=NULL)
+# what fraction of entries are still missing MSK cancer type assignment
+print(sum(is.na(moa$MskCancerType))/dim(moa)[[1]])
+
+# now combine MOA and CIVIC
 matchCols <- c("source","gene","AAChange","Drugs","FDAApproved","ReferenceOrTrialID","EvidenceText","Phase","Indicated","Disease","chr","pos","ref","alt","MskCancerType")
 dbRules <- rbind(moa[,matchCols],clinical[,matchCols])
 outF <-  paste0(figDir,"/civic_MOA_clinically_actionable_list.txt")
@@ -166,7 +196,6 @@ outF <-  paste0(figDir,"/civic_MOA_non_AA_change_alterations.txt")
 write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
 
 
-
 #table(dbProtein[,"AAChange"]) # except 
 #table(dbOtherAlt[,"AAChange"])
 table(dbProtein[,"source"]) # except 
@@ -174,40 +203,20 @@ table(dbOtherAlt[,"source"])
 
 
 # COMMAND ----------
-### load MSK-IMPACT
-inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/impact_2017_annotated_per_variant.tsv"
-msk <- read.csv(inFile,sep="\t")
-inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/msk_impact_data_clinical_sample2.txt"
-patient.msk <- read.csv(inFile,sep="\t")
-msk$Chromosome.str <- paste0("chr",msk$Chromosome)
-msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
 
-# join clinical info onto variant info
-all(msk$Tumor_Sample_Barcode %in% patient.msk$SAMPLE_ID)
-
-msk <- msk %>% 
-  dplyr::left_join(patient.msk,by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
 
 # COMMAND ----------
-### create cancer type maps CIVIC-->MSK and MOA-->MSK
 
-### which are the most common cancer types in msk, moa, and civic
-msk.cType.cnt <- msk %>%
-  dplyr::group_by(CANCER_TYPE) %>%
-  dplyr::summarise(number.of.subjects=dplyr::n_distinct(PATIENT_ID)) %>%
-  dplyr::arrange(desc(number.of.subjects))
-outF <-  paste0(figDir,"/msk_cancer_types.txt")
-write.table(msk.cType.cnt,outF,row.names=F,quote=F,sep="\t")
 
-civic.cType.cnt <- clinical %>%
-  dplyr::group_by(Disease) %>%
-  dplyr::summarise(number.of.subjects=dplyr::n()) %>%
-  dplyr::arrange(desc(number.of.subjects))
-
-moa.cType.cnt <- moa %>%
-  dplyr::group_by(disease) %>%
-  dplyr::summarise(number.of.subjects=dplyr::n()) %>%
-  dplyr::arrange(desc(number.of.subjects))
+# civic.cType.cnt <- clinical %>%
+#   dplyr::group_by(Disease) %>%
+#   dplyr::summarise(number.of.subjects=dplyr::n()) %>%
+#   dplyr::arrange(desc(number.of.subjects))
+# 
+# moa.cType.cnt <- moa %>%
+#   dplyr::group_by(disease) %>%
+#   dplyr::summarise(number.of.subjects=dplyr::n()) %>%
+#   dplyr::arrange(desc(number.of.subjects))
 
 # COMMAND ----------
 ### join with MOA - by protein change
