@@ -29,6 +29,10 @@ moa <- read.csv(inFile,sep="\t")
 inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
 clinical <- read.csv(inFile,sep="\t",quote = "")
 
+# combined MOA+CIVIC file
+inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence_20220913/civic_MOA_clinically_actionable_list.txt"
+dbRules <- read.csv(inFile,sep="\t")
+
 # load geneoOncoX basic
 inFile <- "/Users/larsonhogstrom/Documents/code/oncology_biomarkers/geneOncoX_basic_records.txt"
 geneOncox <- read.csv(inFile,sep="\t",quote = "",stringsAsFactors = FALSE)
@@ -435,14 +439,86 @@ for (bin in c(-2,-1,0,1,2)) {
   }
 }
 
+#####################
+### short variants ###
+#####################
 
-### 
+# exclude events that aren't short variants
+#exList <- c("expression","EXPRESSION","TRANSLOCATION","omoter","OMOTER","Copy Number Variation")
+exList <- c("xpression|EXPRESSION|TRANSLOCATION|omoter|OMOTER|Copy Number Variation|mplification|ATION|REARRANGEMENT|DELETION|eletion")
+
+iNotSV <- grepl(exList,dbRules$AAChange)
+table(iNotSV)
+genome.change.cnts <- dbRules[!iNotSV,] %>%
+  dplyr::group_by(pos,ref,alt) %>%
+  dplyr::summarise(n=n(),
+                   nSource=dplyr::n_distinct(source),
+                   nCancers=dplyr::n_distinct(Disease)) %>%
+  dplyr::arrange(desc(n))
+
+aaChange.cnts <- dbRules[!iNotSV,] %>%
+  dplyr::group_by(gene, AAChange) %>%
+  dplyr::summarise(n=n(),
+                   nSource=dplyr::n_distinct(source),
+                   nCancers=dplyr::n_distinct(Disease)) %>%
+  dplyr::arrange(desc(n))
+
+# select representative genome entry for general matches
+genome.rep <- dbRules[!iNotSV,] %>%
+  dplyr::group_by(chr,pos,alt) %>%
+  dplyr::filter(dplyr::row_number()==1)
 
 print(dim(sv))
 sv.full <- sv %>%
-  dplyr::left_join(pancanSampInfo,by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
+  dplyr::left_join(pancanSampInfo,by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>%
+  dplyr::mutate(HGVSp_Short_mod=gsub("p.","",HGVSp_Short),
+                Chromosome.str=paste0("chr",as.character(Chromosome)))
 print(dim(sv.full))
 
+### subset pancan SV to actionable mutations by AA (in at least once cancer)
+sv.aa.actionable <- sv.full %>% 
+  filter(Hugo_Symbol %in% unique(as.character(aa.rep$gene))) %>%
+  inner_join(aa.rep[,c("gene","AAChange")],by=c("Hugo_Symbol"="gene","HGVSp_Short_mod"="AAChange"))
+print(dim(sv.aa.actionable))
+aaPancanActionableCnts <- sv.aa.actionable %>%
+  dplyr::group_by(Hugo_Symbol,HGVSp_Short_mod) %>%
+  dplyr::summarise(nSubjects=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(nSubjects))
+print(dim(aaPancanActionableCnts))
+outFile <- paste0(figDir,"/top_actionable_pancan_matuations_by_AA_change.txt")
+write.table(aaPancanActionableCnts,outFile,sep="\t",row.names = F)
+
+### subset pancan SV to actionable mutations by genome change (in at least once cancer)
+sv.genome.actionable <- sv.full %>% 
+  filter(Hugo_Symbol %in% unique(as.character(genome.rep$gene))) %>%
+  dplyr::inner_join(genome.rep,by=c("Chromosome.str"="chr",
+                                 "Start_Position"="pos",
+                                 "Tumor_Seq_Allele2"="alt"))
+                                 #"CANCER_TYPE"="MskCancerType"))
+print(dim(sv.genome.actionable))
+genomePancanActionableCnts <- sv.genome.actionable %>%
+  dplyr::group_by(Hugo_Symbol,Chromosome,Start_Position,Tumor_Seq_Allele2,HGVSp_Short_mod) %>%
+  dplyr::summarise(nSubjects=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(nSubjects))
+print(dim(genomePancanActionableCnts))
+outFile <- paste0(figDir,"/top_actionable_pancan_matuations_by_genomic_change.txt")
+write.table(genomePancanActionableCnts,outFile,sep="\t",row.names = F)
+
+### what is the MAF of matches compared to all other mutations? 
+aaConcat <- paste0(sv.aa.actionable$Hugo_Symbol,"-",sv.aa.actionable$HGVSp_Short_mod)
+length(unique(aaConcat))
+table(aaConcat)
+
+### how do cancer types line up for PANCAN vs. MOA/CIVIC
+pancanCancerTypes <- as.character(unique(pancanSampInfo$CANCER_TYPE))
+civicCancerTypes <- as.character(unique(clinical$disease))
+moaCancerTypes <- as.character(unique(moa$disease))
+mskTypes <- as.character(unique(dbRules$MskCancerType))
+
+### which MSK types are not in pancan labels? 
+mskTypes[!mskTypes %in% pancanCancerTypes]
+moaCancerTypes[!moaCancerTypes %in% pancanCancerTypes]
+civicCancerTypes[!civicCancerTypes %in% pancanCancerTypes]
 
 outRFile <- paste0(figDir,"pancan_work_space.RData")
 save.image(file = outRFile)

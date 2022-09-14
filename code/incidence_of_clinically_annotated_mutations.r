@@ -47,9 +47,9 @@ head(signatures.moa)
 
 ### make plot of feature type 
 cnts.moa.type <- moa %>%
-  group_by(feature_type) %>%
-  summarise(n=n()) %>%
-  arrange(desc(n))
+  dplyr::group_by(feature_type) %>%
+  dplyr::summarise(n=dplyr::n()) %>%
+  dplyr::arrange(desc(n))
 cnts.moa.type$feature_type <- factor(cnts.moa.type$feature_type,levels=cnts.moa.type$feature_type)
 
 ggplot(cnts.moa.type,aes(x=feature_type,y=n))+
@@ -200,23 +200,6 @@ write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
 #table(dbOtherAlt[,"AAChange"])
 table(dbProtein[,"source"]) # except 
 table(dbOtherAlt[,"source"])
-
-
-# COMMAND ----------
-
-
-# COMMAND ----------
-
-
-# civic.cType.cnt <- clinical %>%
-#   dplyr::group_by(Disease) %>%
-#   dplyr::summarise(number.of.subjects=dplyr::n()) %>%
-#   dplyr::arrange(desc(number.of.subjects))
-# 
-# moa.cType.cnt <- moa %>%
-#   dplyr::group_by(disease) %>%
-#   dplyr::summarise(number.of.subjects=dplyr::n()) %>%
-#   dplyr::arrange(desc(number.of.subjects))
 
 # COMMAND ----------
 ### join with MOA - by protein change
