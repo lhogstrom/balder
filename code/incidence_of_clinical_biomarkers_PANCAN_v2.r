@@ -520,5 +520,31 @@ mskTypes[!mskTypes %in% pancanCancerTypes]
 moaCancerTypes[!moaCancerTypes %in% pancanCancerTypes]
 civicCancerTypes[!civicCancerTypes %in% pancanCancerTypes]
 
+########################################################
+### compare co-occurence of mutations and cna evnets ###
+########################################################
+
+cna.actionable.gene <- cna %>%
+  dplyr::filter(Hugo_Symbol %in% cmoa.cna.rep$gene) %>%
+  dplyr::filter(value == 2 | value == -2)
+length(unique(cna.actionable.gene$Hugo_Symbol))
+length(unique(cna.actionable.gene$ICGC_SAMPLE_ID))
+table(as.character(cna.actionable.gene$Hugo_Symbol))
+table(cna.actionable.gene$value)
+
+### join with SV
+co.occur.tbl <- cna.actionable.gene %>%
+  full_join(sv.aa.actionable,by="PATIENT_ID")
+  
+### create list of genes that occur most frequently together
+gene.co.occr.cnts <- co.occur.tbl %>%
+  filter(!is.na(HGVSp_Short_mod)) %>%
+  dplyr::group_by(Hugo_Symbol.x,value,Hugo_Symbol.y,HGVSp_Short_mod) %>%
+  summarize(n=n()) %>%
+  dplyr::arrange(desc(n))
+outFile <- paste0(figDir,"/top_co_occurance_results.txt")
+write.table(gene.co.occr.cnts,outFile,sep="\t",row.names = F)
+
+
 outRFile <- paste0(figDir,"pancan_work_space.RData")
 save.image(file = outRFile)

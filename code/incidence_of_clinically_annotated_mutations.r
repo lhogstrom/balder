@@ -76,6 +76,45 @@ msk <- msk %>%
   dplyr::left_join(patient.msk,by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
 
 # COMMAND ----------
+### create actionability type assignemnts 
+## MOA
+moa$actionability.summary <- "Other"
+isPrognostic <- moa$therapy_type=="" & !is.na(moa$favorable_prognosis)
+moa[isPrognostic,"actionability.summary"] <- "Prognostic"
+#
+isPredTherapyAct <- is.na(moa$therapy_resistance) & !moa$therapy_type==""
+moa[isPredTherapyAct,"actionability.summary"] <- "Predictive therapy actionability"
+#
+isTherapyResistance <- !is.na(moa$therapy_resistance) & !moa$therapy_type==""
+moa[isTherapyResistance,"actionability.summary"] <- "Therapy resistance"
+table(moa$actionability.summary,exclude=NULL)
+
+## CIViC
+clinical$actionability.summary <- "Other"
+cSigPrognostic <- c("Better Outcome","N/A","Negative","Positive","Poor Outcome")
+isPrognostic <- clinical$evidence_type=="Prognostic" & (clinical$clinical_significance %in% cSigPrognostic)
+clinical[isPrognostic,"actionability.summary"] <- "Prognostic"
+#
+isPredTherapyAct <- clinical$evidence_type=="Predictive" | (clinical$clinical_significance=="Sensitivity/Response")
+clinical[isPredTherapyAct,"actionability.summary"] <- "Predictive therapy actionability"
+#
+isTherapyResistance <- clinical$clinical_significance=="Resistance"
+clinical[isTherapyResistance,"actionability.summary"] <- "Therapy resistance"
+table(clinical$actionability.summary,exclude=NULL)
+
+### make evidence assignments 
+moa$clinical.evidence.summary <- "Lower Confidence"
+moa[moa$source_type == "FDA" | moa$source_type == "Guideline","clinical.evidence.summary"] <- "High Confidence"
+table(moa$clinical.evidence.summary)
+
+clinical$clinical.evidence.summary <- "Lower Confidence"
+clinical[clinical$evidence_level == "A" | clinical$evidence_level == "B","clinical.evidence.summary"] <- "High Confidence"
+table(clinical$clinical.evidence.summary)
+
+
+
+
+# COMMAND ----------
 ### add matching columns
 moa$source <- "MOAlmanac"
 moa$FDAApproved <- NA
@@ -131,13 +170,16 @@ msk.cType.cnt <- msk %>%
 outF <-  paste0(figDir,"/msk_cancer_types.txt")
 write.table(msk.cType.cnt,outF,row.names=F,quote=F,sep="\t")
 
-## create cancer type maps
+## create draft cancer type maps
 iCMmatch <- civic.cType.cnt$Disease %in% msk.cType.cnt$CANCER_TYPE
 CivicMSKCancerTypeMap <- data.frame(CivicCancerType=civic.cType.cnt$Disease)
 rownames(CivicMSKCancerTypeMap) <- CivicMSKCancerTypeMap$CivicCancerType
 CivicMSKCancerTypeMap[iCMmatch,"MskCancerType"] <- as.character(civic.cType.cnt$Disease[iCMmatch])
 mapF <-  paste0(figDir,"/civic_cancer_type_map.txt")
 write.table(CivicMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
+
+### load refined map
+mapF <- paste0(figDir,"/civic_to_msk_cancer_type_map.tsv")
 CivicMSKCancerTypeMap <- read.csv(mapF,sep="\t")
 clinical <- clinical %>%
   dplyr::left_join(CivicMSKCancerTypeMap,by=c("disease"="CivicCancerType"))
@@ -145,12 +187,16 @@ table(clinical$MskCancerType,exclude=NULL)
 # what fraction of entries are still missing MSK cancer type assignment
 print(sum(is.na(clinical$MskCancerType))/dim(clinical)[[1]])
 
+### create draft map 
 iCMmatch <- moa.cType.cnt$disease %in% msk.cType.cnt$CANCER_TYPE
 MoaMSKCancerTypeMap <- data.frame(MoaCancerType=moa.cType.cnt$disease)
 rownames(MoaMSKCancerTypeMap) <- MoaMSKCancerTypeMap$CivicCancerType
 MoaMSKCancerTypeMap[iCMmatch,"MskCancerType"] <- as.character(moa.cType.cnt$disease[iCMmatch])
 mapF <-  paste0(figDir,"/moa_cancer_type_map.txt")
 write.table(MoaMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
+
+### load refined map
+mapF <-  paste0(figDir,"/moa_cancer_type_map.tsv")
 MoaMSKCancerTypeMap <- read.csv(mapF,sep="\t")
 MoaMSKCancerTypeMap$MoaCancerType <- as.character(MoaMSKCancerTypeMap$MoaCancerType)
 moa <- moa %>%
@@ -160,7 +206,8 @@ table(moa$MskCancerType,exclude=NULL)
 print(sum(is.na(moa$MskCancerType))/dim(moa)[[1]])
 
 # now combine MOA and CIVIC
-matchCols <- c("source","gene","AAChange","Drugs","FDAApproved","ReferenceOrTrialID","EvidenceText","Phase","Indicated","Disease","chr","pos","ref","alt","MskCancerType")
+matchCols <- c("source","gene","AAChange","Drugs","FDAApproved","ReferenceOrTrialID","EvidenceText","Phase",
+               "Indicated","Disease","chr","pos","ref","alt","MskCancerType","actionability.summary","clinical.evidence.summary")
 dbRules <- rbind(moa[,matchCols],clinical[,matchCols])
 outF <-  paste0(figDir,"/civic_MOA_clinically_actionable_list.txt")
 write.table(dbRules,outF,row.names=F,quote=F,sep="\t")
@@ -319,7 +366,6 @@ msk.full <- msk.full %>%
   group_by(CANCER_TYPE) %>%
   mutate(n_cType_samples=n_distinct(Tumor_Sample_Barcode)) %>%
   data.frame()
-
 
 # create action_type
 msk.full$action_type <- as.character(msk.full$therapy_type)
@@ -700,3 +746,19 @@ write.table(mut.list,outF,row.names=F,quote=F,sep="\t")
 #cn.clinical <- clinical[iAmp | iDel, ]
 #outFile <- paste0(figDir,"/CIViC_copy_number.txt")
 #write.table(cn.clinical,outFile,sep="\t",row.names = F)
+
+#### create summary tables used to define actionability type 
+moa.summary.tbl <- moa %>%
+  dplyr::group_by(therapy_type,favorable_prognosis,therapy_resistance,feature_type,source_type) %>%
+  dplyr::summarise(nEntries=n(),
+                   nUniqueCancers=dplyr::n_distinct(disease))
+outF <-  paste0(figDir,"/moa_entry_summary.txt")
+write.table(moa.summary.tbl,outF,row.names=F,quote=F,sep="\t")
+
+civic.summary.tbl <- clinical %>%
+  dplyr::group_by(evidence_type,,phenotypes,evidence_direction,evidence_level,clinical_significance,drugs,drug_interaction_type) %>%
+  dplyr::summarise(nEntries=n(),
+                   nUniqueCancers=dplyr::n_distinct(disease))
+outF <-  paste0(figDir,"/civic_entry_summary.txt")
+write.table(civic.summary.tbl,outF,row.names=F,quote=F,sep="\t")
+
