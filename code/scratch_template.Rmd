@@ -1,13 +1,14 @@
 ---
 title: "Theming with bslib and thematic"
-output: 
+output:
+  pdf_document: default
   html_document:
     code_folding: show
     theme:
-      bg: "#202123"
-      fg: "#B8BCC2"
-      primary: "#EA80FC"
-      secondary: "#00DAC6"
+      bg: '#202123'
+      fg: '#B8BCC2'
+      primary: '#EA80FC'
+      secondary: '#00DAC6'
       base_font:
         google: Prompt
       heading_font:
