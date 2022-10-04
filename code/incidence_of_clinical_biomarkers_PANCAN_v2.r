@@ -1,5 +1,7 @@
 # Databricks notebook source
-library(tidyverse)
+#library(tidyverse)
+library(tidyr)
+library(dplyr)
 library(ggplot2)
 library(pheatmap)
 library(RColorBrewer)
@@ -8,7 +10,7 @@ library(RColorBrewer)
 #library(geneOncoX)
 
 # COMMAND ----------
-figDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Pancan_biomarker_incidence_v2"
+figDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Pancan_biomarker_incidence_20221004"
 
 inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_cna.txt"
 cna.full <- read.csv(inFile,sep="\t")
@@ -30,6 +32,7 @@ inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-
 clinical <- read.csv(inFile,sep="\t",quote = "")
 
 # combined MOA+CIVIC file
+#inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence_20220913/civic_MOA_clinically_actionable_list.txt"
 inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence_20220913/civic_MOA_clinically_actionable_list.txt"
 dbRules <- read.csv(inFile,sep="\t")
 
@@ -57,17 +60,17 @@ print(length(unique(cyto$Cytoband)))
 print(length(unique(cna$chr_arm)))
 
 ## what is the distribution of CNA values at the gene-level?
-outF <-  paste0(figDir,"/CNA_value_gene_dist.png")
-ggplot(cna,aes(x=value))+
-  geom_histogram(alpha=.4)+
-  theme_bw()+
-  #facet_grid(source~.,scale="free_y",)+
-  xlab("CNA value")+
-  ggtitle(paste0("Observed gene-level CNA values in PANCAN"))+
-  scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
-  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  ggsave(outF,height = 5,width = 5)
+# outF <-  paste0(figDir,"/CNA_value_gene_dist.png")
+# ggplot(cna,aes(x=value))+
+#   geom_histogram(alpha=.4)+
+#   theme_bw()+
+#   #facet_grid(source~.,scale="free_y",)+
+#   xlab("CNA value")+
+#   ggtitle(paste0("Observed gene-level CNA values in PANCAN"))+
+#   scale_fill_brewer(palette="Set1",drop=FALSE)+
+#   theme(plot.title = element_text(hjust = 0.5))+
+#   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+#   ggsave(outF,height = 5,width = 5)
 
 ### how do distributions change when grouped by cyto band
 cna.band <- cna %>%
@@ -75,6 +78,7 @@ cna.band <- cna %>%
   dplyr::summarize(mean_value=mean(value))
 print(head(cna.band))
 print(dim(cna.band))
+
 ## what is the distribution of CNA values at the gene-level?
 outF <-  paste0(figDir,"/CNA_value_cytoband_dist.png")
 ggplot(cna.band,aes(x=mean_value))+
@@ -84,7 +88,7 @@ ggplot(cna.band,aes(x=mean_value))+
   xlab("mean CNA value")+
   ggtitle(paste0("Observed cytoband-level CNA values in PANCAN"))+
   scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(hjust = 0.5))
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   ggsave(outF,height = 5,width = 5)
 
@@ -160,13 +164,12 @@ cmoa.cna.rep <- cmoa %>%
   filter(row_number()==1)
 table(cmoa$gene,cmoa$direction)
 
-
 cna.actionable <- cna %>% 
   filter(Hugo_Symbol %in% cmoa.cna.rep$gene) %>%
   left_join(cmoa.cna.rep[,c("gene","direction")],by=c("Hugo_Symbol"="gene"))
 print(dim(cna.actionable))
 
-outF <-  paste0(figDir,"/CNA_actionable_by_gene.png")
+outF <-  paste0(figDir,"/CNA_actionable_by_gene_v1.png")
 ggplot(cna.actionable,aes(x=value))+
   geom_histogram(alpha=.4)+
   theme_bw()+
@@ -174,7 +177,7 @@ ggplot(cna.actionable,aes(x=value))+
   xlab("mean CNA value")+
   ggtitle(paste0("Observed crhom-arm CNA values in PANCAN"))+
   scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(hjust = 0.5))
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   ggsave(outF,height = 35,width = 5)
 
@@ -214,7 +217,7 @@ cna.act.perc.cType$relative_change <- cna.act.perc.cType$perc_subj - cna.act.per
 #  summarise(total=sum(perc_subj))
 #head(tmp.perc)
 
-outF <-  paste0(figDir,"/CNA_actionable_by_gene.png")
+outF <-  paste0(figDir,"/CNA_actionable_by_gene_v2.png")
 ggplot(cna.actionable,aes(x=value))+
   geom_histogram(alpha=.4)+
   theme_bw()+
@@ -222,7 +225,7 @@ ggplot(cna.actionable,aes(x=value))+
   xlab("mean CNA value")+
   ggtitle(paste0("Observed crhom-arm CNA values in PANCAN"))+
   scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(hjust = 0.5))
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   ggsave(outF,height = 35,width = 5)
 
@@ -235,7 +238,7 @@ ggplot(cna.act.perc,aes(x=value,y=relative_change))+
   xlab("mean CNA value")+
   ggtitle(paste0(""))+
   scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(hjust = 0.5))
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   ggsave(outF,height = 35,width = 5)
 
@@ -256,7 +259,7 @@ ggplot(cna.act.perc[cna.act.perc$Hugo_Symbol %in% largestChangeGenes,],aes(x=val
   xlab("mean CNA value")+
   ggtitle(paste0(""))+
   scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(hjust = 0.5))
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   ggsave(outF,height = 15,width = 5)
 
@@ -282,7 +285,7 @@ ggplot(cna.perc,aes(x=relative_change))+
   ggtitle(paste0("Percent of subject enrichment for CNA events \n according to clinical actionability"))+
   xlim(-25,25)+
   scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(hjust = 0.5))
   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   ggsave(outF,height = 4,width = 10)
 
@@ -325,7 +328,7 @@ outF <-  paste0(figDir,"/CNA_differential_gene_annotation.png")
 #ggplot(summary.cna.perc[summary.cna.perc$cgc_onc_tsg=="null",],aes(x=neg1,y=pos2,color=cgc_onc_tsg))+
 ggplot()+
   geom_point(data=summary.cna.perc[summary.cna.perc$cgc_onc_tsg=="null",],aes(x=neg1,y=pos2,color=cgc_onc_tsg),alpha=.2)+
-  geom_point(data=summary.cna.perc[!summary.cna.perc$cgc_onc_tsg=="null",],aes(x=neg1,y=pos2,color=cgc_onc_tsg),alpha=.8)+
+  geom_point(data=summary.cna.perc[!summary.cna.perc$cgc_onc_tsg=="null",],aes(x=neg1,y=pos2,color=cgc_onc_tsg),alpha=.8)
   #theme_bw()+
   #facet_grid(direction~value,scale="free_y",)+
   #geom_vline(xintercept = 0,linetype="dotted")+
@@ -340,12 +343,12 @@ ggplot()+
 
 outF <-  paste0(figDir,"/CNA_differential_gene_gene_indispensability_score.png")
 ggplot()+
-  geom_point(data=summary.cna.perc,aes(x=neg1,y=pos2,color=gene_indispensability_score),alpha=.2)+
+  geom_point(data=summary.cna.perc,aes(x=neg1,y=pos2,color=gene_indispensability_score),alpha=.2)
   ggsave(outF,height = 4,width = 10)
 
 outF <-  paste0(figDir,"/CNA_differential_prob_exac_lof_intolerant.png")
 ggplot()+
-  geom_point(data=summary.cna.perc,aes(x=neg1,y=pos2,color=prob_exac_lof_intolerant),alpha=.2)+
+  geom_point(data=summary.cna.perc,aes(x=neg1,y=pos2,color=prob_exac_lof_intolerant),alpha=.2)
   ggsave(outF,height = 4,width = 10)
 
 #### look at perc enrichment grouped by cancer types ####

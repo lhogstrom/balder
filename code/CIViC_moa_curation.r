@@ -221,6 +221,7 @@ dbAlteration <- dbRules %>%
   dplyr::summarize(n.db.entries=dplyr::n(),
                    source=paste0(unique(source),collapse=";"),
                    diseases=paste0(unique(Disease),collapse=";"),
+                   actionability.summary=paste0(unique(actionability.summary),collapse=";"),
                    Drugs=paste0(unique(Drugs),collapse=";")) %>% 
   dplyr::arrange(desc(n.db.entries))
 dbAlteration <- dbAlteration[!is.na(dbAlteration$AAChange),]

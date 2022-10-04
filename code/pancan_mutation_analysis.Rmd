@@ -1,0 +1,84 @@
+---
+title: "PANCAN mutation analysis"
+description: |
+  Clincally actionable mutations in PANCAN
+author:
+  - name: Larson Hogstrom 
+    url: 
+    affiliation: UiO
+    affiliation_url: 
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(knitr)
+
+###load source script 
+#source("/Users/larsonhogstrom/Documents/code/balder/code/CIViC_moa_curation.r")
+
+## or load cached data
+
+```
+
+This document describes identifying clinically actionable mutaitons in the MSK-IMPACT variant set.
+
+First, run the script to load the MSK data and compile the list of clinically actionable mutations
+
+```{r, include=TRUE, echo=TRUE}
+source("./incidence_of_clinical_biomarkers_PANCAN_v2.r")
+```
+
+
+### join actionable list by by protein change
+
+```{r, include=TRUE, echo=TRUE}
+sv.aa.actionable <- sv.full %>% 
+  filter(Hugo_Symbol %in% unique(as.character(aa.rep$gene))) %>%
+  inner_join(aa.rep[,c("gene","AAChange")],by=c("Hugo_Symbol"="gene","HGVSp_Short_mod"="AAChange"))
+print(dim(sv.aa.actionable))
+```
+
+<!-- ```{r, include=TRUE, echo=TRUE} -->
+<!-- #print(table(msk.protein$MOAset,msk.protein$source,exclude = NULL)) -->
+
+<!-- ``` -->
+
+
+
+<!-- ### rank mutations -->
+<!-- Now rank order clinically actionable mutations by how often they occur in MSK -->
+
+<!-- ```{r, include=TRUE, echo=TRUE} -->
+
+<!-- msk.protein.cnt <- msk %>% -->
+<!--   dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene", -->
+<!--                                       "protein_change"="AAChange")) %>% -->
+<!--   dplyr::group_by(Hugo_Symbol,protein_change) %>% -->
+<!--   dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID), -->
+<!--                    source=paste0(unique(source),collapse=";")) %>% -->
+<!--   dplyr::arrange(desc(n.patients.mutated)) -->
+<!-- #print(dim(msk.protein.cnt)) -->
+<!-- #print(table(msk.protein.cnt$source,exclude = NULL)) -->
+<!-- knitr::kable(head(msk.protein.cnt)) -->
+<!-- ``` -->
+
+<!-- ### impose cancer type matches (protein) -->
+<!-- ```{r, include=TRUE} -->
+<!-- msk.protein.cancer <- msk %>% -->
+<!--   dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene", -->
+<!--                                  "protein_change"="AAChange", -->
+<!--                                  "CANCER_TYPE"="MskCancerType"))  -->
+<!-- msk.protein.cancer.cnt <- msk.protein.cancer %>% -->
+<!--   dplyr::group_by(Hugo_Symbol,protein_change,CANCER_TYPE) %>% -->
+<!--   dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID), -->
+<!--                    source=paste0(unique(source),collapse=";"), -->
+<!--                    Drugs=paste0(unique(Drugs),collapse=";"), -->
+<!--                    ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>% -->
+<!--   dplyr::arrange(desc(n.patients.mutated)) -->
+<!-- print(dim(msk.protein.cancer.cnt)) -->
+<!-- print(table(msk.protein.cancer.cnt$source,exclude = NULL)) -->
+<!-- print(sum(msk.protein.cancer.cnt$n.patients.mutated)) -->
+<!-- ``` -->
+

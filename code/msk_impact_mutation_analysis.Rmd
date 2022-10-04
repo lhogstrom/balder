@@ -1,25 +1,154 @@
 ---
-title: "Untitled"
+title: "MSK-IMPACT mutation analysis"
 description: |
-  A new article created using the Distill format.
+  Clincally actionable mutations in MSK-IMPACT
 author:
-  - name: Nora Jones 
-    url: https://example.com/norajones
-    affiliation: Spacely Sprockets
-    affiliation_url: https://example.com/spacelysprokets
+  - name: Larson Hogstrom 
+    url: 
+    affiliation: UiO
+    affiliation_url: 
 date: "`r Sys.Date()`"
 output: distill::distill_article
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
+library(knitr)
+#source("/Users/larsonhogstrom/Documents/code/balder/code/CIViC_moa_curation.r")
 ```
 
-Distill is a publication format for scientific and technical writing, native to the web. 
+This document describes identifying clinically actionable mutaitons in the MSK-IMPACT variant set.
 
-Learn more about using Distill for R Markdown at <https://rstudio.github.io/distill>.
+First, run the script to load the MSK data and compile the list of clinically actionable mutations
+
+```{r, include=FALSE, echo=FALSE}
+source("./CIViC_moa_curation.r")
+```
+
+
+### join with MOA - by protein change
+
+```{r, include=TRUE, echo=TRUE}
+dbAlteration$MOAset <- "Y"
+msk.protein <- msk %>%
+  dplyr::left_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                            "protein_change"="AAChange"))
+
+```
+
+```{r, include=TRUE, echo=TRUE}
+#print(table(msk.protein$MOAset,msk.protein$source,exclude = NULL))
+
+```
 
 
 
+### rank mutations
+Now rank order clinically actionable mutations by how often they occur in MSK
 
+```{r, include=TRUE, echo=TRUE}
 
+msk.protein.cnt <- msk %>%
+  dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                                     "protein_change"="AAChange")) %>%
+  dplyr::group_by(Hugo_Symbol,protein_change) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
+                   source=paste0(unique(source),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+#print(dim(msk.protein.cnt))
+#print(table(msk.protein.cnt$source,exclude = NULL))
+knitr::kable(head(msk.protein.cnt))
+```
+
+### impose cancer type matches (protein)
+```{r, include=TRUE}
+msk.protein.cancer <- msk %>%
+  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
+                                  "protein_change"="AAChange",
+                                 "CANCER_TYPE"="MskCancerType")) 
+msk.protein.cancer.cnt <- msk.protein.cancer %>%
+  dplyr::group_by(Hugo_Symbol,protein_change,CANCER_TYPE) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(msk.protein.cancer.cnt))
+print(table(msk.protein.cancer.cnt$source,exclude = NULL))
+print(sum(msk.protein.cancer.cnt$n.patients.mutated))
+```
+
+## MAF of cancer type specific actionabile variants 
+
+```{r, include=TRUE, echo=TRUE}
+### MAF results
+maf.df.msk <- data.frame(MAF=msk$MAF)
+maf.df.msk$source <- "MSK all variants"
+
+# maf of clinically actionable based on protein match
+maf.df.protein<- data.frame(MAF=msk.protein.cancer$MAF)
+maf.df.protein$source <- "clinically actionable"
+
+maf.df <- rbind(maf.df.msk,maf.df.protein)
+
+outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable.png")
+ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Now show density plot
+
+```{r, include=TRUE, echo=TRUE}
+ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+## MAF of actionabile variants in any cancer type
+Do not constrain to cancer type
+
+```{r, include=TRUE, echo=TRUE}
+### MAF results
+maf.df.msk <- data.frame(MAF=msk$MAF)
+maf.df.msk$source <- "MSK all variants"
+
+# maf of clinically actionable based on protein match
+maf.df.protein<- data.frame(MAF=msk.protein[!is.na(msk.protein$n.db.entries),"MAF"])
+maf.df.protein$source <- "any clinically actionable"
+
+maf.df <- rbind(maf.df.msk,maf.df.protein)
+
+ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Now show density plot
+```{r, include=TRUE, echo=TRUE}
+ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
