@@ -43,7 +43,6 @@ print(table(moa$variant_annotation))
 print(table(moa$cosmic_signature_number,exclude=NULL))
 
 signatures.moa <- moa[moa$feature_type=="Mutational signature",]
-head(signatures.moa)
 
 ### make plot of feature type 
 cnts.moa.type <- moa %>%
@@ -179,7 +178,8 @@ mapF <-  paste0(figDir,"/civic_cancer_type_map.txt")
 write.table(CivicMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
 
 ### load refined map
-mapF <- paste0(figDir,"/civic_to_msk_cancer_type_map.tsv")
+#mapF <- paste0(figDir,"/civic_to_msk_cancer_type_map.tsv")
+mapF <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Pancan_biomarker_incidence_v2/civic_cancer_type_map.txt"
 CivicMSKCancerTypeMap <- read.csv(mapF,sep="\t")
 clinical <- clinical %>%
   dplyr::left_join(CivicMSKCancerTypeMap,by=c("disease"="CivicCancerType"))
@@ -196,7 +196,8 @@ mapF <-  paste0(figDir,"/moa_cancer_type_map.txt")
 write.table(MoaMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
 
 ### load refined map
-mapF <-  paste0(figDir,"/moa_cancer_type_map.tsv")
+#mapF <-  paste0(figDir,"/moa_cancer_type_map.tsv")
+mapF <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Pancan_biomarker_incidence_v2/moa_cancer_type_map.tsv"
 MoaMSKCancerTypeMap <- read.csv(mapF,sep="\t")
 MoaMSKCancerTypeMap$MoaCancerType <- as.character(MoaMSKCancerTypeMap$MoaCancerType)
 moa <- moa %>%
