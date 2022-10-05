@@ -515,6 +515,7 @@ maf.df.protein$source <- "clinically actionable"
 
 maf.df <- rbind(maf.df.pancan,maf.df.protein)
 
+
 outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable.png")
 ggplot(maf.df,aes(x=MAF,fill=source))+
   geom_histogram(alpha=.4)+
@@ -526,7 +527,16 @@ ggplot(maf.df,aes(x=MAF,fill=source))+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 5,width = 5)
 
-
+outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable_density.png")
+ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in PANCAN"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 5,width = 5)
 
 
 ### more descriptive info

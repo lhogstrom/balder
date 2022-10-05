@@ -31,8 +31,11 @@ source("./CIViC_moa_curation.r")
 dbAlteration$MOAset <- "Y"
 msk.protein <- msk %>%
   dplyr::left_join(dbAlteration,by=c("Hugo_Symbol"="gene",
-                            "protein_change"="AAChange"))
+                            "protein_change"="AAChange")) 
 
+msk.protein$actionability.summary.mod <- msk.protein$actionability.summary
+msk.protein[grepl(";",msk.protein$actionability.summary),"actionability.summary.mod"] <- "multiple actionability types"
+msk.protein[grepl("Predictive therapy actionability",msk.protein$actionability.summary) & grepl(";",msk.protein$actionability.summary),"actionability.summary.mod"] <- "Predictive therapy actionability or Prognistic"
 ```
 
 ```{r, include=TRUE, echo=TRUE}
@@ -83,10 +86,12 @@ print(sum(msk.protein.cancer.cnt$n.patients.mutated))
 ### MAF results
 maf.df.msk <- data.frame(MAF=msk$MAF)
 maf.df.msk$source <- "MSK all variants"
+maf.df.msk$actionability.summary <- "NA"
 
 # maf of clinically actionable based on protein match
 maf.df.protein<- data.frame(MAF=msk.protein.cancer$MAF)
 maf.df.protein$source <- "clinically actionable"
+maf.df.protein$actionability.summary <- msk.protein.cancer$actionability.summary
 
 maf.df <- rbind(maf.df.msk,maf.df.protein)
 
@@ -110,7 +115,19 @@ ggplot(maf.df,aes(x=MAF,fill=source))+
   #facet_grid(source~.,scale="free_y",)+
   xlab("MAF (%)")+
   ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
-  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r, include=TRUE, echo=TRUE}
+ggplot(maf.df,aes(x=MAF,fill=actionability.summary))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
   theme(plot.title = element_text(hjust = 0.5))
 
 ```
@@ -122,10 +139,12 @@ Do not constrain to cancer type
 ### MAF results
 maf.df.msk <- data.frame(MAF=msk$MAF)
 maf.df.msk$source <- "MSK all variants"
+maf.df.msk$actionability.summary <- "NA"
 
 # maf of clinically actionable based on protein match
 maf.df.protein<- data.frame(MAF=msk.protein[!is.na(msk.protein$n.db.entries),"MAF"])
 maf.df.protein$source <- "any clinically actionable"
+maf.df.protein$actionability.summary <- msk.protein[!is.na(msk.protein$n.db.entries),"actionability.summary.mod"]
 
 maf.df <- rbind(maf.df.msk,maf.df.protein)
 
@@ -142,6 +161,17 @@ ggplot(maf.df,aes(x=MAF,fill=source))+
 Now show density plot
 ```{r, include=TRUE, echo=TRUE}
 ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+```{r, include=TRUE, echo=TRUE}
+ggplot(maf.df[!maf.df$actionability.summary =="Other",],aes(x=MAF,fill=actionability.summary))+
   geom_density(alpha=.4)+
   theme_bw()+
   #facet_grid(source~.,scale="free_y",)+
