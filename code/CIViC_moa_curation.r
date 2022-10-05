@@ -202,7 +202,9 @@ print(sum(is.na(moa$MskCancerType))/dim(moa)[[1]])
 # now combine MOA and CIVIC
 matchCols <- c("source","gene","AAChange","Drugs","FDAApproved","ReferenceOrTrialID","EvidenceText","Phase",
                "Indicated","Disease","chr","pos","ref","alt","MskCancerType","actionability.summary","clinical.evidence.summary")
-dbRules <- rbind(moa[,matchCols],clinical[,matchCols])
+dbRules <- rbind(moa[,matchCols],clinical[,matchCols]) %>%
+  dplyr::mutate(EvidenceText=gsub("\t","-",EvidenceText)) %>%
+  dplyr::mutate(ReferenceOrTrialID=gsub("\t","-",ReferenceOrTrialID))
 outF <-  paste0(figDir,"/civic_MOA_clinically_actionable_list.txt")
 write.table(dbRules,outF,row.names=F,quote=F,sep="\t")
 

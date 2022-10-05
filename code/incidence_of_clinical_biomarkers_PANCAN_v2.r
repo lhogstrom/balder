@@ -32,7 +32,6 @@ inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-
 clinical <- read.csv(inFile,sep="\t",quote = "")
 
 # combined MOA+CIVIC file
-#inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence_20220913/civic_MOA_clinically_actionable_list.txt"
 inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence_20220913/civic_MOA_clinically_actionable_list.txt"
 dbRules <- read.csv(inFile,sep="\t")
 
@@ -72,54 +71,6 @@ print(length(unique(cna$chr_arm)))
 #   #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
 #   ggsave(outF,height = 5,width = 5)
 
-### how do distributions change when grouped by cyto band
-cna.band <- cna %>%
-  dplyr::group_by(Cytoband,sample) %>%
-  dplyr::summarize(mean_value=mean(value))
-print(head(cna.band))
-print(dim(cna.band))
-
-## what is the distribution of CNA values at the gene-level?
-outF <-  paste0(figDir,"/CNA_value_cytoband_dist.png")
-ggplot(cna.band,aes(x=mean_value))+
-  geom_histogram(alpha=.4)+
-  theme_bw()+
-  #facet_grid(source~.,scale="free_y",)+
-  xlab("mean CNA value")+
-  ggtitle(paste0("Observed cytoband-level CNA values in PANCAN"))+
-  scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))
-  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  ggsave(outF,height = 5,width = 5)
-
-### check non-null values
-iSampleNull <- is.na(cna$sample)
-iBandNull <- is.na(cna$Cytoband)
-table(iBandNull)
-# are the entries the same across bands for the same sample 
-table(cna[cna$Cytoband=="10p11.1" & cna$sample=="SP10084" & !iBandNull,"value"])
-table(cna[cna$Cytoband=="6q27" & cna$sample=="SP10084" & !iBandNull,"value"])
-table(cna[cna$Cytoband=="7p14.2" & cna$sample=="SP10084" & !iBandNull,"value"])
-table(cna[cna$chr_arm=="14q13" & cna$sample=="SP10084" & !iBandNull,"value"])
-
-### how do distributions change when grouped by chr arm
-cna.arm <- cna %>%
-  dplyr::group_by(chr_arm,sample) %>%
-  dplyr::summarize(mean_value=mean(value))
-print(head(cna.arm))
-print(dim(cna.arm))
-## what is the distribution of CNA values at the gene-level?
-outF <-  paste0(figDir,"/CNA_value_chr_arm_dist.png")
-ggplot(cna.arm,aes(x=mean_value))+
-  geom_histogram(alpha=.4)+
-  theme_bw()+
-  #facet_grid(source~.,scale="free_y",)+
-  xlab("mean CNA value")+
-  ggtitle(paste0("Observed crhom-arm CNA values in PANCAN"))+
-  scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))+
-  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  ggsave(outF,height = 5,width = 5)
 
 
 ### write out CNV info
@@ -478,10 +429,13 @@ sv.full <- sv %>%
                 Chromosome.str=paste0("chr",as.character(Chromosome)))
 print(dim(sv.full))
 
+#sv.full$MAF <- 100*(sv.full$t_alt_count / (sv.full$t_ref_count+sv.full$t_alt_count))
+
+
 ### subset pancan SV to actionable mutations by AA (in at least once cancer)
 sv.aa.actionable <- sv.full %>% 
-  filter(Hugo_Symbol %in% unique(as.character(aa.rep$gene))) %>%
-  inner_join(aa.rep[,c("gene","AAChange")],by=c("Hugo_Symbol"="gene","HGVSp_Short_mod"="AAChange"))
+  filter(Hugo_Symbol %in% unique(as.character(aaChange.cnts$gene))) %>% # aa.rep
+  inner_join(aaChange.cnts[,c("gene","AAChange")],by=c("Hugo_Symbol"="gene","HGVSp_Short_mod"="AAChange"))
 print(dim(sv.aa.actionable))
 aaPancanActionableCnts <- sv.aa.actionable %>%
   dplyr::group_by(Hugo_Symbol,HGVSp_Short_mod) %>%
@@ -549,5 +503,84 @@ outFile <- paste0(figDir,"/top_co_occurance_results.txt")
 write.table(gene.co.occr.cnts,outFile,sep="\t",row.names = F)
 
 
-outRFile <- paste0(figDir,"pancan_work_space.RData")
+## MAF of cancer type specific actionabile variants 
+
+### MAF results
+maf.df.pancan <- data.frame(MAF=sv.full$DNA_VAF)
+maf.df.pancan$source <- "PANCAN all variants"
+
+# maf of clinically actionable based on protein match
+maf.df.protein<- data.frame(MAF=sv.aa.actionable$DNA_VAF)
+maf.df.protein$source <- "clinically actionable"
+
+maf.df <- rbind(maf.df.pancan,maf.df.protein)
+
+outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable.png")
+ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in PANCAN"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 5,width = 5)
+
+
+
+
+### more descriptive info
+
+### how do distributions change when grouped by cyto band
+cna.band <- cna %>%
+  dplyr::group_by(Cytoband,sample) %>%
+  dplyr::summarize(mean_value=mean(value))
+print(head(cna.band))
+print(dim(cna.band))
+
+## what is the distribution of CNA values at the gene-level?
+outF <-  paste0(figDir,"/CNA_value_cytoband_dist.png")
+ggplot(cna.band,aes(x=mean_value))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("mean CNA value")+
+  ggtitle(paste0("Observed cytoband-level CNA values in PANCAN"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+#theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+
+### check non-null values
+iSampleNull <- is.na(cna$sample)
+iBandNull <- is.na(cna$Cytoband)
+table(iBandNull)
+# are the entries the same across bands for the same sample 
+table(cna[cna$Cytoband=="10p11.1" & cna$sample=="SP10084" & !iBandNull,"value"])
+table(cna[cna$Cytoband=="6q27" & cna$sample=="SP10084" & !iBandNull,"value"])
+table(cna[cna$Cytoband=="7p14.2" & cna$sample=="SP10084" & !iBandNull,"value"])
+table(cna[cna$chr_arm=="14q13" & cna$sample=="SP10084" & !iBandNull,"value"])
+
+### how do distributions change when grouped by chr arm
+cna.arm <- cna %>%
+  dplyr::group_by(chr_arm,sample) %>%
+  dplyr::summarize(mean_value=mean(value))
+print(head(cna.arm))
+print(dim(cna.arm))
+## what is the distribution of CNA values at the gene-level?
+outF <-  paste0(figDir,"/CNA_value_chr_arm_dist.png")
+ggplot(cna.arm,aes(x=mean_value))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("mean CNA value")+
+  ggtitle(paste0("Observed crhom-arm CNA values in PANCAN"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  ggsave(outF,height = 5,width = 5)
+
+outRFile <- paste0(figDir,"/pancan_work_space.RData")
 save.image(file = outRFile)
+
+

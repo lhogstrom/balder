@@ -19,7 +19,7 @@ library(knitr)
 #source("/Users/larsonhogstrom/Documents/code/balder/code/CIViC_moa_curation.r")
 
 ## or load cached data
-
+load("/Users/larsonhogstrom/Documents/oncology_biomarkers/Pancan_biomarker_incidence_20221004/pancan_work_space.RData")
 ```
 
 This document describes identifying clinically actionable mutaitons in the MSK-IMPACT variant set.
@@ -35,10 +35,35 @@ source("./incidence_of_clinical_biomarkers_PANCAN_v2.r")
 
 ```{r, include=TRUE, echo=TRUE}
 sv.aa.actionable <- sv.full %>% 
-  filter(Hugo_Symbol %in% unique(as.character(aa.rep$gene))) %>%
-  inner_join(aa.rep[,c("gene","AAChange")],by=c("Hugo_Symbol"="gene","HGVSp_Short_mod"="AAChange"))
+  filter(Hugo_Symbol %in% unique(as.character(aaChange.cnts$gene))) %>% # aa.rep
+  inner_join(aaChange.cnts[,c("gene","AAChange")],by=c("Hugo_Symbol"="gene","HGVSp_Short_mod"="AAChange"))
 print(dim(sv.aa.actionable))
 ```
+
+## MAF of cancer type specific actionabile variants 
+
+```{r, include=TRUE, echo=TRUE}
+### MAF results
+maf.df.msk <- data.frame(MAF=sv.full$DNA_VAF)
+maf.df.msk$source <- "PANCAN all variants"
+
+# maf of clinically actionable based on protein match
+maf.df.protein<- data.frame(MAF=sv.aa.actionable$DNA_VAF)
+maf.df.protein$source <- "clinically actionable"
+
+maf.df <- rbind(maf.df.msk,maf.df.protein)
+
+#outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable.png")
+ggplot(maf.df,aes(x=MAF,fill=source))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
 
 <!-- ```{r, include=TRUE, echo=TRUE} -->
 <!-- #print(table(msk.protein$MOAset,msk.protein$source,exclude = NULL)) -->
