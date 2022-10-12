@@ -508,14 +508,18 @@ write.table(gene.co.occr.cnts,outFile,sep="\t",row.names = F)
 ### MAF results
 maf.df.pancan <- data.frame(MAF=sv.full$DNA_VAF)
 maf.df.pancan$source <- "PANCAN all variants"
+maf.df.pancan$sample_type <- sv.full$SAMPLE_TYPE
+maf.df.pancan$Tumor_Sample_Barcode <- sv.full$Tumor_Sample_Barcode
 
 # maf of clinically actionable based on protein match
 maf.df.protein<- data.frame(MAF=sv.aa.actionable$DNA_VAF)
 maf.df.protein$source <- "clinically actionable"
+maf.df.protein$sample_type <- sv.aa.actionable[,"SAMPLE_TYPE"]
+maf.df.protein$Tumor_Sample_Barcode <- sv.aa.actionable$Tumor_Sample_Barcode
 
 maf.df <- rbind(maf.df.pancan,maf.df.protein)
 
-
+# plot clinically actionable distribution
 outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable.png")
 ggplot(maf.df,aes(x=MAF,fill=source))+
   geom_histogram(alpha=.4)+
@@ -532,6 +536,19 @@ ggplot(maf.df,aes(x=MAF,fill=source))+
   geom_density(alpha=.4)+
   theme_bw()+
   #facet_grid(source~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in PANCAN"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 5,width = 5)
+
+#Density plot of primary vs. met 
+outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable_density.png")
+iSubset <- !maf.df$sample_type=="Cell line" & !is.na(maf.df$sample_type)
+ggplot(maf.df[iSubset,],aes(x=MAF,fill=source))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  facet_grid(sample_type~.,scale="free_y",)+
   xlab("MAF (%)")+
   ggtitle(paste0("MAF of clinically actioanable variants \n in PANCAN"))+
   scale_fill_brewer(palette="Set2",drop=FALSE)+

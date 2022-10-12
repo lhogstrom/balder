@@ -169,6 +169,7 @@ maf.df.msk <- data.frame(MAF=msk$MAF)
 maf.df.msk$source <- "MSK all variants"
 maf.df.msk$actionability.summary <- "NA"
 maf.df.msk$sample_type <- msk$SAMPLE_TYPE
+maf.df.msk$Tumor_Sample_Barcode <- msk$Tumor_Sample_Barcode
 
 # maf of clinically actionable based on protein match
 subset.df <- msk.protein[!is.na(msk.protein$n.db.entries),]
@@ -176,6 +177,7 @@ maf.df.protein<- data.frame(MAF=subset.df[,"MAF"])
 maf.df.protein$source <- "any clinically actionable"
 maf.df.protein$actionability.summary <- subset.df[,"actionability.summary.mod"]
 maf.df.protein$sample_type <- subset.df[,"SAMPLE_TYPE"]
+maf.df.protein$Tumor_Sample_Barcode <- subset.df$Tumor_Sample_Barcode
 
 maf.df <- rbind(maf.df.msk,maf.df.protein)
 
@@ -235,5 +237,61 @@ ggplot(maf.df[!maf.df$actionability.summary =="Other",],aes(x=MAF,fill=actionabi
   ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
   scale_fill_brewer(palette="Set2",drop=FALSE)+
   theme(plot.title = element_text(hjust = 0.5))
+
+```
+## Look reported TMB levels 
+
+```{r, include=TRUE, echo=TRUE}
+mut.cnts <- msk %>%
+  group_by(Tumor_Sample_Barcode) %>%
+  dplyr::summarise(n_mutations=n(),
+                   TMB=dplyr::first(TMB_NONSYNONYMOUS),
+                   sample_type=dplyr::first(SAMPLE_TYPE))
+
+ggplot(mut.cnts,aes(x=n_mutations,y=TMB))+
+  geom_point(alpha=.2)+
+  theme_bw()+
+  #facet_grid(sample_type~.,scale="free_y",)+
+  xlab("number of mutations per patient")+
+  xlab("TMB (non-synonymous)")+
+  ggtitle(paste0("number of mutations reported and TMB values listed \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+```{r, include=TRUE, echo=TRUE}
+mut.cnts$log_tmb <- log(mut.cnts$TMB)
+ggplot(mut.cnts,aes(x=log_tmb))+ #,fill=actionability.summary
+  geom_density(alpha=.4)+
+  theme_bw()+
+  facet_grid(sample_type~.,scale="free_y",)+
+  xlab("log(TMB)")+
+  ggtitle(paste0("TMB of samples \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r, include=TRUE, echo=TRUE}
+## do maf levels differ for high TMB patients vs. low? 
+
+tmb.thresh <- summary(mut.cnts$TMB)[[5]] # tmb subjects above 3rd quartile
+mut.cnts$TMB_level <- "low"
+mut.cnts[mut.cnts$TMB > tmb.thresh,'TMB_level'] <- "high"
+
+maf.df <- maf.df %>%
+  dplyr::left_join(mut.cnts,by="Tumor_Sample_Barcode")
+
+ggplot(maf.df[!maf.df$actionability.summary =="Other",],aes(x=MAF,fill=source))+ #,
+  geom_density(alpha=.4)+
+  theme_bw()+
+  facet_grid(TMB_level~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in MSK-IMPACT"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+
 
 ```

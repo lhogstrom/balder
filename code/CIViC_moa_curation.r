@@ -56,10 +56,16 @@ ggplot(cnts.moa.type,aes(x=feature_type,y=n))+
 ### load MSK-IMPACT
 inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/impact_2017_annotated_per_variant.tsv"
 msk <- read.csv(inFile,sep="\t")
-inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/msk_impact_data_clinical_sample2.txt"
-patient.msk <- read.csv(inFile,sep="\t")
+#inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/msk_impact_data_clinical_sample2.txt"
+#patient.msk <- read.csv(inFile,sep="\t")
+inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/msk_impact_2017/data_clinical_sample.txt"
+patient.msk <- read.csv(inFile,sep="\t",skip = 4)
 msk$Chromosome.str <- paste0("chr",msk$Chromosome)
 msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
+
+### Is there a primary and secondary alt listed? 
+#table(is.na(msk$n_alt_count),exclude=NULL)
+#table(msk$Reference_Allele == msk$Tumor_Seq_Allele1,exclude=NULL)
 
 # join clinical info onto variant info
 all(msk$Tumor_Sample_Barcode %in% patient.msk$SAMPLE_ID)
