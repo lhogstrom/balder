@@ -543,7 +543,7 @@ ggplot(maf.df,aes(x=MAF,fill=source))+
 ggsave(outF,height = 5,width = 5)
 
 #Density plot of primary vs. met 
-outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable_density.png")
+outF <-  paste0(figDir,"/MAF_distribution_clinically_actionable_density_by_type.png")
 iSubset <- !maf.df$sample_type=="Cell line" & !is.na(maf.df$sample_type)
 ggplot(maf.df[iSubset,],aes(x=MAF,fill=source))+
   geom_density(alpha=.4)+
@@ -554,6 +554,35 @@ ggplot(maf.df[iSubset,],aes(x=MAF,fill=source))+
   scale_fill_brewer(palette="Set2",drop=FALSE)+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 5,width = 5)
+
+# which mutations are most common for each sample type
+mut.raw.cnts <- sv.aa.actionable %>%
+  dplyr::group_by(Hugo_Symbol,HGVSp_Short_mod) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(mutation=paste0(Hugo_Symbol,"-",HGVSp_Short_mod )) %>%
+  dplyr::arrange(desc(n))
+
+mut.sample.type.cnts <- sv.aa.actionable %>%
+  dplyr::group_by(SAMPLE_TYPE,Hugo_Symbol,HGVSp_Short_mod) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(mutation=paste0(Hugo_Symbol,"-",HGVSp_Short_mod )) %>%
+  dplyr::arrange(desc(n))
+mut.sample.type.cnts$mutation <- factor(mut.sample.type.cnts$mutation, levels=mut.raw.cnts$mutation)
+
+outF <-  paste0(figDir,"/mutation_counts_actionable_density_by_sample_typoe.png")
+iSubset <- (!mut.sample.type.cnts$SAMPLE_TYPE=="Cell line" & !mut.sample.type.cnts$SAMPLE_TYPE=="Local Recurrence") & !is.na(mut.sample.type.cnts$SAMPLE_TYPE) 
+ggplot(mut.sample.type.cnts[iSubset,],aes(x=mutation,y=n))+
+  geom_point(alpha=.4)+
+  theme_bw()+
+  facet_grid(SAMPLE_TYPE~.,scale="free_y",)+
+  #xlab("MAF (%)")+
+  ggtitle(paste0("Clinically actioanable variants by sample type \n in PANCAN"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+ggsave(outF,height = 5,width = 9)
+
+  
 
 
 ### more descriptive info
