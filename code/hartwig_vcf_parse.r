@@ -1,4 +1,5 @@
 library(vcfR)
+library(pryr)
 
 baseDir <- "/data/larsonh/hartwig"
 #baseDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Hartwig/data" 
@@ -10,7 +11,7 @@ sampleList <- read.csv(inFile,sep=",", header = F)
 # first need to unzip vcf files
 
 outVariantTable <- data.frame()
-for (sample in sampleList$V1) {
+for (sample in as.character(sampleList$V1)) {
   print(sample)
   #inFile <- "/data/larsonh/hartwig/CPCT02060137T/purple/CPCT02060137T.purple.somatic.test.vcf"
   inFile <- paste0(baseDir,"/",sample,"/purple/",sample,".purple.somatic.vcf.gz")
@@ -21,61 +22,47 @@ for (sample in sampleList$V1) {
   vcf <- read.vcfR( inFile, verbose = FALSE )
   df <- vcfR::vcfR2tidy(vcf)
   
+  #df.meta <- df$meta
+  #dim(df.meta)
+  #head(data.frame(df.meta))
+  
   df.fix <- df$fix
-  dim(df.fix)
+  print(dim(df.fix))
   
   df.gt <- df$gt
-  dim(df.gt)
-  
-  ### check for matching entries
-  #head(df.gt[,c("POS","gt_GT_alleles")])
-  #head(df.fix[,c("POS","REF","ALT")])
-  
-  # parse redundant entries
-  #all(df.fix[,"POS"] == df.gt[1:3095,"POS"])
-  #g1 <- df.gt[1:3095,]
-  #head(data.frame(g1))
-  #g2 <- df.gt[3096:6190,]
-  #head(data.frame(g2))
-  #all(g1 == g2)
+  #dim(df.gt)
   
   # parse Ref and alt count entries 
   gtSize <- dim(df.gt)[[1]]
   g1 <- df.gt[1:(gtSize/2),]
-  #head(data.frame(g1))
   g2 <- df.gt[((gtSize/2)+1):(gtSize),]
-  #head(data.frame(g2))
  
-  # scratch 
-  #head(g2[,c("POS","gt_GT_alleles")])
-  #head(df.fix[,c("POS","REF","ALT")])
-  #head(g1[,c("gt_RDP")])
-  #head(g2[,c("gt_RDP")])
-  #head(g1[,c("gt_RAD")])
-  #head(g2[,c("gt_RAD")])
-  
-  af1 <- g1[,c("gt_AF","gt_GT_alleles")]
-  colnames(af1) <- c("Ref_AF","gt_REF_alleles")
-  af2 <- g2[,c("gt_AF","gt_GT_alleles")]
-  colnames(af2) <- c("Alt_AF","gt_alt_alleles")
+  af1 <- g1[,c("gt_AF","gt_GT_alleles","gt_DP","gt_RAD")]
+  colnames(af1) <- c("Ref_AF","gt_REF_alleles","gt_REF_DP","gt_REF_RAD")
+  af1$gt_RAD_1 <- as.numeric(sapply(strsplit(g1$gt_RAD, "\\,"), "[[", 1))
+  af1$gt_RAD_2 <- as.numeric(sapply(strsplit(g1$gt_RAD, "\\,"), "[[", 2))
+  #af1$Ref_AF_alternative <- af1$gt_RAD_1/af1$gt_REF_DP
+  af1$Ref_AF_alternative2 <- af1$gt_RAD_2/af1$gt_REF_DP
+  af2 <- g2[,c("gt_AF","gt_GT_alleles","gt_DP","gt_RAD")]
+  colnames(af2) <- c("Alt_AF","gt_alt_alleles","gt_ALT_DP","gt_ALT_RAD")
+  af2$gt_RAD_1 <- as.numeric(sapply(strsplit(g2$gt_RAD, "\\,"), "[[", 1))
+  af2$gt_RAD_2 <- as.numeric(sapply(strsplit(g2$gt_RAD, "\\,"), "[[", 2))
+  #af2$Alt_AF_alternative <- af2$gt_RAD_1/af2$gt_ALT_DP
+  af2$Alt_AF_alternative2 <- af2$gt_RAD_2/af2$gt_ALT_DP
   
   dd <- cbind(df.fix, af1, af2)
   dd$sample <- sample
-  outCols <- c("sample","ChromKey","CHROM","POS","REF","ALT" ,"QUAL", "FILTER","BIALLELIC", "HOTSPOT","IMPACT",
+  outCols <- c("sample","ChromKey","CHROM","POS","REF","ALT" ,"QUAL", "FILTER","BIALLELIC",
                "Ref_AF","gt_REF_alleles","Alt_AF","gt_alt_alleles")
-  
-  outVariantTable <- rbind(outVariantTable,dd[,outCols])
-  
-  #df.meta <- df$meta
-  #dim(df.meta)
-  #head(data.frame(df.meta))
-
+  dd.filter <- dd[dd$FILTER=="PASS",] # dd$gt_ALT_DP > 10
+  print(dim(dd.filter))
+  outVariantTable <- rbind(outVariantTable,dd.filter[,outCols])
+  print(pryr::object_size(outVariantTable))
 }
 
-outFile <- paste0(baseDir,"/pancan_variant_table_subset.txt")
+outFile <- paste0(baseDir,"/pancan_variant_table_subset_filtered_v1.txt")
 write.table(outVariantTable,outFile,sep="\t",row.names = F)
-
-outVariantTable <- read.csv(outFile,sep="\t") # load data if previously generated
+#outVariantTable <- read.csv(outFile,sep="\t") # load data if previously generated
 
 
 ### summary data
@@ -114,6 +101,36 @@ outF <-  paste0(figDir,"/variants_per_subject_log.png")
   
 table(outVariantTable$HOTSPOT)
 table(outVariantTable$BIALLELIC)
+
+outF <-  paste0(figDir,"/variants_alt_af.png")
+ggplot(outVariantTable,aes(x=Alt_AF))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("Variant AF")+
+  ggtitle(paste0("100 Hartwig samples\n all ALT variants"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+#theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+
+
+outF <-  paste0(figDir,"/variants_Ref_af_log.png")
+ggplot(outVariantTable,aes(x=Ref_AF))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  #facet_grid(source~.,scale="free_y",)+
+  xlab("Variant AF")+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  )+
+  ggtitle(paste0("100 Hartwig samples\n all REF variants"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+#theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+
 
 ### number of subjects seen with a given variant
 variant.cnts <- outVariantTable %>%
