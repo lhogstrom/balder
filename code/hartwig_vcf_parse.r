@@ -44,20 +44,23 @@ for (sample in as.character(sampleList$V1)) {
   #af1$Ref_AF_alternative <- af1$gt_RAD_1/af1$gt_REF_DP
   af1$Ref_AF_alternative2 <- af1$gt_RAD_2/af1$gt_REF_DP
   af2 <- g2[,c("gt_AF","gt_GT_alleles","gt_DP","gt_RAD")]
-  colnames(af2) <- c("Alt_AF","gt_alt_alleles","gt_ALT_DP","gt_ALT_RAD")
+  colnames(af2) <- c("tumor_AF","gt_tumor_alleles","gt_tumor_DP","gt_tumor_RAD")
   af2$gt_RAD_1 <- as.numeric(sapply(strsplit(g2$gt_RAD, "\\,"), "[[", 1))
   af2$gt_RAD_2 <- as.numeric(sapply(strsplit(g2$gt_RAD, "\\,"), "[[", 2))
   #af2$Alt_AF_alternative <- af2$gt_RAD_1/af2$gt_ALT_DP
-  af2$Alt_AF_alternative2 <- af2$gt_RAD_2/af2$gt_ALT_DP
+  af2$tumor_AF_alternative2 <- af2$gt_RAD_2/af2$gt_tumor_DP
   
   dd <- cbind(df.fix, af1, af2)
   dd$sample <- sample
   outCols <- c("sample","ChromKey","CHROM","POS","REF","ALT" ,"QUAL", "FILTER","BIALLELIC",
-               "Ref_AF","gt_REF_alleles","Alt_AF","gt_alt_alleles")
+               "Ref_AF","gt_REF_alleles","Ref_AF_alternative2","gt_REF_DP",
+               "tumor_AF","gt_tumor_alleles","tumor_AF_alternative2","gt_tumor_DP")
   dd.filter <- dd[dd$FILTER=="PASS",] # dd$gt_ALT_DP > 10
   print(dim(dd.filter))
   outVariantTable <- rbind(outVariantTable,dd.filter[,outCols])
   print(pryr::object_size(outVariantTable))
+  
+  #vcfR::write.vcf
 }
 
 outFile <- paste0(baseDir,"/pancan_variant_table_subset_filtered_v1.txt")
