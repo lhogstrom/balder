@@ -83,7 +83,7 @@ for (sample in as.character(sampleList$V1)) {
                   "##INFO=<ID=CVAF,Number=.,Type=Float,Description=\"Allelic fraction of alternative allele in control\">",
                   "##INFO=<ID=CDP,Number=.,Type=Integer,Description=\"Read depth across variant site in control\">",
                    outvcf@meta[61:90])
-  outFile <- paste0(baseDir,"/",sample,"/purple/",sample,".scratch.out.vcf.gz")
+  outFile <- paste0(baseDir,"/",sample,"/purple/",sample,".pcgr_format.vcf.gz")
   vcfR::write.vcf(outvcf,file=outFile)
   #
   pcgrDir <- "/data/sigven/pcgr"
@@ -95,11 +95,12 @@ for (sample in as.character(sampleList$V1)) {
                      " --sample_id ", sample,
                      " --tumor_dp_tag TDP --tumor_af_tag TVAF --basic")
   
+  print(str.pcgr)
   
 }
 
-outFile <- paste0(baseDir,"/pancan_variant_table_subset_filtered_v1.txt")
-write.table(outVariantTable,outFile,sep="\t",row.names = F)
+#outFile <- paste0(baseDir,"/pancan_variant_table_subset_filtered_v1.txt")
+#write.table(outVariantTable,outFile,sep="\t",row.names = F)
 #outVariantTable <- read.csv(outFile,sep="\t") # load data if previously generated
 
 
