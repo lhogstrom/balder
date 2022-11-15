@@ -55,12 +55,47 @@ for (sample in as.character(sampleList$V1)) {
   outCols <- c("sample","ChromKey","CHROM","POS","REF","ALT" ,"QUAL", "FILTER","BIALLELIC",
                "Ref_AF","gt_REF_alleles","Ref_AF_alternative2","gt_REF_DP",
                "tumor_AF","gt_tumor_alleles","tumor_AF_alternative2","gt_tumor_DP")
-  dd.filter <- dd[dd$FILTER=="PASS",] # dd$gt_ALT_DP > 10
-  print(dim(dd.filter))
-  outVariantTable <- rbind(outVariantTable,dd.filter[,outCols])
-  print(pryr::object_size(outVariantTable))
+  iPass <- dd$FILTER=="PASS"
+  dd.filter <- dd[iPass,] # dd$gt_ALT_DP > 10
+  #print(dim(dd.filter))
+  #outVariantTable <- rbind(outVariantTable,dd.filter[,outCols])
+  #print(pryr::object_size(outVariantTable))
+
+  # test out vcf for pcgr  
+  outvcf <- vcf
+  #infoOut <- rep("TVAF=0.0980;TDP=51",6146)
+  infoOut <- paste0("TVAF=",as.character(dd.filter$tumor_AF),
+                    ";TDP=",as.character(dd.filter$gt_tumor_DP),
+                    ";CVAF=",as.character(dd.filter$Ref_AF),
+                    ";CDP=",as.character(dd.filter$gt_REF_DP))
   
-  #vcfR::write.vcf
+  # filter to only PASS entries
+  outvcf@fix <- outvcf@fix[iPass,]
+  outvcf@fix[,8] <- infoOut
+  nVariants <- dim(dd.filter)[[1]]
+  outvcf@gt <- matrix("",nVariants)
+  
+  ### remove FORMAT headers
+  
+  outvcf@meta <- c(outvcf@meta[1:28],
+                  "##INFO=<ID=TVAF,Number=.,Type=Float,Description=\"Allelic fraction of alternative allele in tumor\">",
+                  "##INFO=<ID=TDP,Number=.,Type=Integer,Description=\"Read depth across variant site in tumor\">",
+                  "##INFO=<ID=CVAF,Number=.,Type=Float,Description=\"Allelic fraction of alternative allele in control\">",
+                  "##INFO=<ID=CDP,Number=.,Type=Integer,Description=\"Read depth across variant site in control\">",
+                   outvcf@meta[61:90])
+  outFile <- paste0(baseDir,"/",sample,"/purple/",sample,".scratch.out.vcf.gz")
+  vcfR::write.vcf(outvcf,file=outFile)
+  #
+  pcgrDir <- "/data/sigven/pcgr"
+  outDir <- paste0(baseDir,"/",sample,"/purple/testpcgr")
+  str.pcgr <- paste0("pcgr --input_vcf ",outFile,
+                     " --output_dir ", outDir,
+                     " --pcgr_dir ", pcgrDir,
+                     " --genome_assembly grch37",
+                     " --sample_id ", sample,
+                     " --tumor_dp_tag TDP --tumor_af_tag TVAF --basic")
+  
+  
 }
 
 outFile <- paste0(baseDir,"/pancan_variant_table_subset_filtered_v1.txt")

@@ -1,4 +1,4 @@
-PCGR_VERSION="1.1.0"
+PCGR_VERSION="1.2.0"
 PCGR_REPO="https://raw.githubusercontent.com/sigven/pcgr/v${PCGR_VERSION}/conda/env/lock/"
 PLATFORM="linux" 
 
