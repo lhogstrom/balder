@@ -5,8 +5,12 @@ baseDir <- "/data/larsonh/hartwig"
 #baseDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Hartwig/data" 
 figDir <- paste0(baseDir,"/output")
 
-inFile <- paste0(baseDir,"/samples2.txt")
+inFile <- paste0(baseDir,"/samples3.txt")
 sampleList <- read.csv(inFile,sep=",", header = F)
+
+inFile <- "/data/larsonh/hartwig/metadata.tsv"
+hMeta <- read.csv(inFile,sep="\t")
+
 # load R in cancell - module load R/4.1.2-foss-2021b
 # first need to unzip vcf files
 
@@ -30,7 +34,6 @@ for (sample in as.character(sampleList$V1)) {
   print(dim(df.fix))
   
   df.gt <- df$gt
-  #dim(df.gt)
   
   # parse Ref and alt count entries 
   gtSize <- dim(df.gt)[[1]]
@@ -47,7 +50,6 @@ for (sample in as.character(sampleList$V1)) {
   colnames(af2) <- c("tumor_AF","gt_tumor_alleles","gt_tumor_DP","gt_tumor_RAD")
   af2$gt_RAD_1 <- as.numeric(sapply(strsplit(g2$gt_RAD, "\\,"), "[[", 1))
   af2$gt_RAD_2 <- as.numeric(sapply(strsplit(g2$gt_RAD, "\\,"), "[[", 2))
-  #af2$Alt_AF_alternative <- af2$gt_RAD_1/af2$gt_ALT_DP
   af2$tumor_AF_alternative2 <- af2$gt_RAD_2/af2$gt_tumor_DP
   
   dd <- cbind(df.fix, af1, af2)
@@ -57,13 +59,11 @@ for (sample in as.character(sampleList$V1)) {
                "tumor_AF","gt_tumor_alleles","tumor_AF_alternative2","gt_tumor_DP")
   iPass <- dd$FILTER=="PASS"
   dd.filter <- dd[iPass,] # dd$gt_ALT_DP > 10
-  #print(dim(dd.filter))
   #outVariantTable <- rbind(outVariantTable,dd.filter[,outCols])
   #print(pryr::object_size(outVariantTable))
 
   # test out vcf for pcgr  
   outvcf <- vcf
-  #infoOut <- rep("TVAF=0.0980;TDP=51",6146)
   infoOut <- paste0("TVAF=",as.character(dd.filter$tumor_AF),
                     ";TDP=",as.character(dd.filter$gt_tumor_DP),
                     ";CVAF=",as.character(dd.filter$Ref_AF),
@@ -94,7 +94,6 @@ for (sample in as.character(sampleList$V1)) {
                      " --genome_assembly grch37",
                      " --sample_id ", sample,
                      " --tumor_dp_tag TDP --tumor_af_tag TVAF --basic")
-  
   print(str.pcgr)
   
 }
@@ -102,6 +101,19 @@ for (sample in as.character(sampleList$V1)) {
 #outFile <- paste0(baseDir,"/pancan_variant_table_subset_filtered_v1.txt")
 #write.table(outVariantTable,outFile,sep="\t",row.names = F)
 #outVariantTable <- read.csv(outFile,sep="\t") # load data if previously generated
+
+########################################
+### Load PCGR output for each sample ###
+########################################
+
+outVariantTable <- data.frame()
+for (sample in as.character(sampleList$V1)) {
+  print(sample)
+  inFile <- paste0(baseDir,"/",sample,"/purple/pcgr_out/",sample,".pcgr_acmg.grch37.pass.tsv.gz")
+  df.pcgr <- read.csv(inFile,sep="\t",skip=1)
+  colSubset <- c("TVAF")
+  print(dim(df.pcgr))
+}
 
 
 ### summary data
@@ -177,6 +189,14 @@ variant.cnts <- outVariantTable %>%
   summarise(number.of.samples=dplyr::n()) %>%
   dplyr::arrange(desc(number.of.samples))
 
+#########################
+### metadata analysis ###
+#########################
+
+subject.sample.cnts <- hMeta %>%
+  dplyr::group_by(hmfPatientId) %>%
+  dplyr::summarise(n=dplyr::n())
+table(subject.sample.cnts$n)
 
 # ### scratch
 # inFile <- "/data/larsonh/hartwig/CPCT02060137T/purple/CPCT02060137T.purple.somatic.test.vcf"
