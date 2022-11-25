@@ -242,6 +242,9 @@ dbOtherAlt <- dbAlteration[!iAACoord,]
 # output non-match events
 outF <-  paste0(figDir,"/civic_MOA_non_AA_change_alterations.txt")
 write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
+# output AA match events
+outF <-  paste0(figDir,"/civic_MOA_AA_change_alterations.txt")
+write.table(dbProtein,outF,row.names=F,quote=F,sep="\t")
 
 
 #table(dbProtein[,"AAChange"]) # except 

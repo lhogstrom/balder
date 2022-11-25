@@ -1,5 +1,6 @@
 library(vcfR)
 library(pryr)
+library(stringr)
 
 baseDir <- "/data/larsonh/hartwig"
 #baseDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Hartwig/data" 
@@ -102,101 +103,58 @@ for (sample in as.character(sampleList$V1)) {
 #write.table(outVariantTable,outFile,sep="\t",row.names = F)
 #outVariantTable <- read.csv(outFile,sep="\t") # load data if previously generated
 
-########################################
-### Load PCGR output for each sample ###
-########################################
-
-outVariantTable <- data.frame()
-for (sample in as.character(sampleList$V1)) {
-  print(sample)
-  inFile <- paste0(baseDir,"/",sample,"/purple/pcgr_out/",sample,".pcgr_acmg.grch37.pass.tsv.gz")
-  df.pcgr <- read.csv(inFile,sep="\t",skip=1)
-  colSubset <- c("TVAF")
-  print(dim(df.pcgr))
-}
 
 
-### summary data
-variant.cnts.per.subject <- outVariantTable %>%
-  group_by(sample) %>%
-  summarise(number.of.variants=dplyr::n())
-
-outF <-  paste0(figDir,"/variants_per_subject.png")
-ggplot(variant.cnts.per.subject,aes(x=number.of.variants))+
-  geom_histogram(alpha=.4)+
-  theme_bw()+
-  #facet_grid(source~.,scale="free_y",)+
-  xlab("variants per sample")+
-  ggtitle(paste0("100 Hartwig samples\n variants per sample"))+
-  scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))
-  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  ggsave(outF,height = 5,width = 5)
-  
-outF <-  paste0(figDir,"/variants_per_subject_log.png")
-  ggplot(variant.cnts.per.subject,aes(x=number.of.variants))+
-    geom_histogram(alpha=.4)+
-    theme_bw()+
-    #facet_grid(source~.,scale="free_y",)+
-    scale_x_log10(
-      breaks = scales::trans_breaks("log10", function(x) 10^x),
-      labels = scales::trans_format("log10", scales::math_format(10^.x))
-    )+
-    xlab("variants per sample")+
-    ggtitle(paste0("100 Hartwig samples\n variants per sample"))+
-    scale_fill_brewer(palette="Set1",drop=FALSE)+
-    theme(plot.title = element_text(hjust = 0.5))
-  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  ggsave(outF,height = 5,width = 5)  
-
-  
-table(outVariantTable$HOTSPOT)
-table(outVariantTable$BIALLELIC)
-
-outF <-  paste0(figDir,"/variants_alt_af.png")
-ggplot(outVariantTable,aes(x=Alt_AF))+
-  geom_histogram(alpha=.4)+
-  theme_bw()+
-  #facet_grid(source~.,scale="free_y",)+
-  xlab("Variant AF")+
-  ggtitle(paste0("100 Hartwig samples\n all ALT variants"))+
-  scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))
-#theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-ggsave(outF,height = 5,width = 5)
 
 
-outF <-  paste0(figDir,"/variants_Ref_af_log.png")
-ggplot(outVariantTable,aes(x=Ref_AF))+
-  geom_histogram(alpha=.4)+
-  theme_bw()+
-  #facet_grid(source~.,scale="free_y",)+
-  xlab("Variant AF")+
-  scale_x_log10(
-    breaks = scales::trans_breaks("log10", function(x) 10^x),
-    labels = scales::trans_format("log10", scales::math_format(10^.x))
-  )+
-  ggtitle(paste0("100 Hartwig samples\n all REF variants"))+
-  scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(plot.title = element_text(hjust = 0.5))
-#theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-ggsave(outF,height = 5,width = 5)
-
-
-### number of subjects seen with a given variant
-variant.cnts <- outVariantTable %>%
-  group_by(CHROM,POS,REF,ALT) %>%
-  summarise(number.of.samples=dplyr::n()) %>%
-  dplyr::arrange(desc(number.of.samples))
-
-#########################
-### metadata analysis ###
-#########################
-
-subject.sample.cnts <- hMeta %>%
-  dplyr::group_by(hmfPatientId) %>%
-  dplyr::summarise(n=dplyr::n())
-table(subject.sample.cnts$n)
+#   
+# table(outVariantTable$HOTSPOT)
+# table(outVariantTable$BIALLELIC)
+# 
+# outF <-  paste0(figDir,"/variants_alt_af.png")
+# ggplot(outVariantTable,aes(x=Alt_AF))+
+#   geom_histogram(alpha=.4)+
+#   theme_bw()+
+#   #facet_grid(source~.,scale="free_y",)+
+#   xlab("Variant AF")+
+#   ggtitle(paste0("100 Hartwig samples\n all ALT variants"))+
+#   scale_fill_brewer(palette="Set1",drop=FALSE)+
+#   theme(plot.title = element_text(hjust = 0.5))
+# #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+# ggsave(outF,height = 5,width = 5)
+# 
+# 
+# outF <-  paste0(figDir,"/variants_Ref_af_log.png")
+# ggplot(outVariantTable,aes(x=Ref_AF))+
+#   geom_histogram(alpha=.4)+
+#   theme_bw()+
+#   #facet_grid(source~.,scale="free_y",)+
+#   xlab("Variant AF")+
+#   scale_x_log10(
+#     breaks = scales::trans_breaks("log10", function(x) 10^x),
+#     labels = scales::trans_format("log10", scales::math_format(10^.x))
+#   )+
+#   ggtitle(paste0("100 Hartwig samples\n all REF variants"))+
+#   scale_fill_brewer(palette="Set1",drop=FALSE)+
+#   theme(plot.title = element_text(hjust = 0.5))
+# #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+# ggsave(outF,height = 5,width = 5)
+# 
+# 
+# ### number of subjects seen with a given variant
+# variant.cnts <- outVariantTable %>%
+#   group_by(CHROM,POS,REF,ALT) %>%
+#   summarise(number.of.samples=dplyr::n()) %>%
+#   dplyr::arrange(desc(number.of.samples))
+# 
+# #########################
+# ### metadata analysis ###
+# #########################
+# 
+# subject.sample.cnts <- hMeta %>%
+#   dplyr::group_by(hmfPatientId) %>%
+#   dplyr::summarise(n=dplyr::n())
+# table(subject.sample.cnts$n)
 
 # ### scratch
 # inFile <- "/data/larsonh/hartwig/CPCT02060137T/purple/CPCT02060137T.purple.somatic.test.vcf"
