@@ -5,7 +5,7 @@ library(ggplot2)
 
 baseDir <- "/data/larsonh/hartwig"
 #baseDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Hartwig/data" 
-figDir <- paste0(baseDir,"/output")
+figDir <- paste0(baseDir,"/output_v2")
 
 inFile <- paste0(baseDir,"/samples.txt")
 sampleList <- read.csv(inFile,sep=",", header = F)
@@ -41,9 +41,21 @@ for (sample in as.character(sampleList$V1)) {
   #colSubset <- c("TVAF")
   print(dim(df.pcgr))
   # track variant counts per subject
-  varsPerSubject[sample,"subject"] <- sample
-  varsPerSubject[sample,"numberOfVariants"] <- dim(df.pcgr)[[1]]
+  #varsPerSubject[sample,"subject"] <- sample
+  #varsPerSubject[sample,"numberOfVariants"] <- dim(df.pcgr)[[1]]
+  # variant summary info
+  varSum <- df.pcgr %>%
+    dplyr::summarise(numberOfVariants=dplyr::n(),
+              TSGEvents=sum(TUMOR_SUPPRESSOR=="True"),
+              ONCEvents=sum(TUMOR_SUPPRESSOR=="True"),
+              CodingEvents=sum(CODING_STATUS=="coding"),
+              HotspotEvents=sum(!MUTATION_HOTSPOT=="."),
+              LoFEvents=sum(!LoF=="."),
+              CanonicalEvents=sum(!CANONICAL=="."),
+              TCGADriverEvents=sum(!TCGA_DRIVER=="."))
+  varSum$sample <- sample
   
+  ### Look for clinically actionable entries ###
   # make match strings -- AA change
   df.pcgr$AAMatchStr <- paste0(as.character(df.pcgr$SYMBOL),"-",df.pcgr$AAChange)
   df.pcgr[df.pcgr$HGVSp_short==".","AAMatchStr"]<- "N/A"
@@ -67,6 +79,8 @@ for (sample in as.character(sampleList$V1)) {
   print(paste0("number of clinically actionable matches: ", as.character(sum(iClinMatch))))
   outCols <- colnames(df.pcgr)[!colnames(df.pcgr) %in% c("TNC")] # exclude TNC column present in only some subjects
   cVariantTable <- rbind(cVariantTable,df.pcgr[iClinMatch,outCols])
+  <- sum(iClinMatch)
+  varsPerSubject <- rbind(varsPerSubject,varSum)
   
   ### track the MAF values of N non-actionable variants as background
   outColsRand <- c("CHROM", 
@@ -78,10 +92,25 @@ for (sample in as.character(sampleList$V1)) {
                    "TDP", 
                    "CVAF", 
                    "CDP")
-  ncDf <- df.pcgr[!iClinMatch,outColsRand]
-  nVarToGrab <- 25 # select N per sample
-  iRandVars <- sample(dim(ncDf)[[1]],nVarToGrab,replace=F)
-  ncVariantTable <- rbind(ncVariantTable,ncDf[iRandVars,])
+  nVarToGrab <- 15 # select N per sample coding + non/coding
+  iCoding <- df.pcgr$CODING_STATUS=="coding"
+  # non-coding
+  ncDfNonCoding <- df.pcgr[!iClinMatch & !iCoding,outColsRand]
+  nVarToGrabNC <- min(nVarToGrab,dim(ncDfNonCoding)[[1]])
+  iRandVarsNC <- sample(dim(ncDfNonCoding)[[1]],nVarToGrabNC,replace=F)
+  ncOut <- ncDfNonCoding[iRandVarsNC,]
+  ncOut$coding_status <- "non-coding"
+  # coding
+  ncDfCoding <- df.pcgr[!iClinMatch & iCoding,outColsRand]
+  nVarToGrabC <- min(nVarToGrab,dim(ncDfCoding)[[1]])
+  cOut <- data.frame()
+  if (nVarToGrabC > 0) {
+    iRandVarsC <- sample(dim(ncDfCoding)[[1]],nVarToGrabC,replace=F)
+    cOut <- ncDfCoding[iRandVarsC,]
+    cOut$coding_status <- "coding"
+  }
+  
+  ncVariantTable <- rbind(ncVariantTable,ncOut,cOut)
 }
 outFile <- paste0(figDir,"/hartwig_clinically_actionable_pcgr_entries.txt")
 write.table(cVariantTable,outFile,row.names=F,quote=F,sep="\t")
