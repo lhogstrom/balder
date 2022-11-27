@@ -79,7 +79,7 @@ for (sample in as.character(sampleList$V1)) {
   print(paste0("number of clinically actionable matches: ", as.character(sum(iClinMatch))))
   outCols <- colnames(df.pcgr)[!colnames(df.pcgr) %in% c("TNC")] # exclude TNC column present in only some subjects
   cVariantTable <- rbind(cVariantTable,df.pcgr[iClinMatch,outCols])
-  <- sum(iClinMatch)
+  varSum$numberClinicallyActionableVariants<- sum(iClinMatch)
   varsPerSubject <- rbind(varsPerSubject,varSum)
   
   ### track the MAF values of N non-actionable variants as background
@@ -109,7 +109,6 @@ for (sample in as.character(sampleList$V1)) {
     cOut <- ncDfCoding[iRandVarsC,]
     cOut$coding_status <- "coding"
   }
-  
   ncVariantTable <- rbind(ncVariantTable,ncOut,cOut)
 }
 outFile <- paste0(figDir,"/hartwig_clinically_actionable_pcgr_entries.txt")
