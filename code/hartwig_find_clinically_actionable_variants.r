@@ -13,6 +13,9 @@ sampleList <- read.csv(inFile,sep=",", header = F)
 inFile <- paste0(baseDir,"/metadata.tsv")
 hMeta <- read.csv(inFile,sep="\t")
 
+inFile <- paste0(baseDir,"/pre_biopsy_drugs.tsv")
+hTreatment <- read.csv(inFile,sep="\t")
+
 ########################################
 ### Load PCGR output for each sample ###
 ########################################
@@ -120,12 +123,15 @@ for (sample in as.character(sampleList$V1)) {
 }
 outFile <- paste0(figDir,"/hartwig_clinically_actionable_pcgr_entries.txt")
 write.table(cVariantTable,outFile,row.names=F,quote=F,sep="\t")
+#cVariantTable <- read.csv(outFile,sep="\t") # get local cashed file
 
 outFile <- paste0(figDir,"/hartwig_random_non_clinically_actionable_variants_per_patient.txt")
 write.table(ncVariantTable,outFile,row.names=F,quote=F,sep="\t")
+#ncVariantTable <- read.csv(outFile,sep="\t") # get local cashed file
 
 outFile <- paste0(figDir,"/hartwig_variant_counts_per_subject.txt")
 write.table(varsPerSubject,outFile,row.names=F,quote=F,sep="\t")
+#varsPerSubject <- read.csv(outFile,sep="\t") # get local cashed file
 
 #########################
 ### metadata analysis ###
@@ -168,7 +174,7 @@ outFile <- paste0(figDir,"/hartwig_metadata_biopsySite.txt")
 write.table(biopsySite.cnts,outFile,row.names=F,quote=F,sep="\t")
 
 ### tumor purity
-tumorPurity
+#tumorPurity
 
 #######################################################
 ### join clinically actionable info to variant info ###
@@ -199,7 +205,6 @@ outFile <- paste0(figDir,"/hartwig_clinically_actionable_gene_rank.txt")
 write.table(gene.rank,outFile,row.names=F,quote=F,sep="\t")
 
 
-
 ### join on metadata
 dim(cVariantTable)
 varTbl <- cVariantTable %>%
@@ -207,7 +212,6 @@ varTbl <- cVariantTable %>%
 dim(varTbl)
 
 table(varTbl$primaryTumorLocation)
-
 
 ### join on  clinically actionable
 var.match <- varTbl %>%
@@ -394,4 +398,31 @@ exCAFusion <- fusion.full[iMatchALKPair & iMatchLung,]
 table(iMatchALKPair)
 head(caFusions[iMatchALKPair,])
 
-  
+######################################
+### Hartwig patient treatment data ###
+######################################
+
+print(dim(hTreatment))
+print(length(unique(hTreatment$patientIdentifier)))
+
+per.patient.summary <- hTreatment %>%
+  dplyr::group_by(patientIdentifier) %>%
+  dplyr::summarise(number_of_therapies=dplyr::n_distinct(name),
+                   number_of_therapy_class=dplyr::n_distinct(type),
+                   number_of_mechanism=dplyr::n_distinct(mechanism))
+
+plt.df <- per.patient.summary %>%
+  tidyr::pivot_longer(!patientIdentifier,names_to = "class",values_to = "value")
+
+outF <-  paste0(figDir,"/pre_biopsy_drug_treatment_counts.png")
+ggplot(plt.df, aes(x=value)) + 
+  geom_histogram(bins=33)+
+  facet_grid(class ~ .)+
+  xlim(c(0,13))+
+  theme_bw()+
+  xlab("number of drugs")+
+  ylab("number of patients")+
+  ggtitle("Hartwig pre-biopsy therapies per subject")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+ggsave(outF,height = 6,width = 5)
