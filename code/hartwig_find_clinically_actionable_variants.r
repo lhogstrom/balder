@@ -2,6 +2,8 @@
 library(pryr)
 library(stringr)
 library(ggplot2)
+library(DBI)
+library(RSQLite)
 
 baseDir <- "/data/larsonh/hartwig"
 #baseDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Hartwig/data" 
@@ -15,6 +17,17 @@ hMeta <- read.csv(inFile,sep="\t")
 
 inFile <- paste0(baseDir,"/pre_biopsy_drugs.tsv")
 hTreatment <- read.csv(inFile,sep="\t")
+
+########################################
+### create connection to results db ###
+########################################
+
+bDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/resultsDb"
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+dbWriteTable(mydb, "mtcars", mtcars)
+
+dbDisconnect(mydb)
 
 ########################################
 ### Load PCGR output for each sample ###
