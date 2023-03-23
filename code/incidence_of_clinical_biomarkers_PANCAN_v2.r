@@ -639,4 +639,24 @@ ggplot(cna.arm,aes(x=mean_value))+
 outRFile <- paste0(figDir,"/pancan_work_space.RData")
 save.image(file = outRFile)
 
+########################
+### write results db ###
+########################
 
+bDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/resultsDb"
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+RSQLite::dbWriteTable(mydb, "pancanMetadata", pancanSampInfo)
+
+# subset variant columns for variant table
+varTable <- sv[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
+colnames(varTable) <- c("chrom","pos","ref","alt","sample")
+varTable$SourceStudy <- "PANCAN-WGS-data"
+
+vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+print(dim(vRes))
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable,append=T)
+vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+print(dim(vRes))
+
+RSQLite::dbDisconnect(mydb)

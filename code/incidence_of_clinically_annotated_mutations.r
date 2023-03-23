@@ -766,3 +766,24 @@ civic.summary.tbl <- clinical %>%
 outF <-  paste0(figDir,"/civic_entry_summary.txt")
 write.table(civic.summary.tbl,outF,row.names=F,quote=F,sep="\t")
 
+########################
+### write results db ###
+########################
+
+bDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/resultsDb"
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+RSQLite::dbWriteTable(mydb, "mskMetadata", patient.msk)
+
+# subset variant columns for variant table
+varTable <- msk[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
+colnames(varTable) <- c("chrom","pos","ref","alt","sample")
+varTable$SourceStudy <- "MSK-IMPACT-data"
+
+vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+print(dim(vRes))
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable,append=T)
+vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+print(dim(vRes))
+
+RSQLite::dbDisconnect(mydb)
