@@ -2,6 +2,8 @@
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(DBI)
+library(RSQLite)
 
 # load variant DB
 
@@ -247,3 +249,18 @@ write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
 
 table(dbProtein[,"source"]) # except 
 table(dbOtherAlt[,"source"])
+
+########################
+### write results db ###
+########################
+
+bDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/resultsDb"
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+RSQLite::dbWriteTable(mydb, "MoaCiVICRuleEntries", dbRules)
+RSQLite::dbWriteTable(mydb, "actionableSNVsByGenomicCoordinate", dbGenome)
+#RSQLite::dbWriteTable(mydb, "actionableSNVsByAAChange", dbAlteration)
+RSQLite::dbWriteTable(mydb, "MoaCiVICOtherAlterations", dbOtherAlt)
+
+RSQLite::dbDisconnect(mydb)
+

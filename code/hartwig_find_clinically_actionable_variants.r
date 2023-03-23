@@ -25,9 +25,13 @@ hTreatment <- read.csv(inFile,sep="\t")
 bDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/resultsDb"
 mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
 
-dbWriteTable(mydb, "mtcars", mtcars)
+RSQLite::dbWriteTable(mydb, "hartwigMetadata", hMeta)
+RSQLite::dbWriteTable(mydb, "hartwigPreBiopsyDrugs", hTreatment)
+RSQLite::dbListTables(mydb)
 
-dbDisconnect(mydb)
+#mtHmeta <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM hartwigMetadata LIMIT 5')
+
+RSQLite::dbDisconnect(mydb)
 
 ########################################
 ### Load PCGR output for each sample ###
@@ -145,6 +149,25 @@ write.table(ncVariantTable,outFile,row.names=F,quote=F,sep="\t")
 outFile <- paste0(figDir,"/hartwig_variant_counts_per_subject.txt")
 write.table(varsPerSubject,outFile,row.names=F,quote=F,sep="\t")
 #varsPerSubject <- read.csv(outFile,sep="\t") # get local cashed file
+
+####################################
+### write variants to results db ###
+####################################
+
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+RSQLite::dbWriteTable(mydb, "pcgrAnnotation", cVariantTable)
+#RSQLite::dbWriteTable(mydb, "pcgrAnnotation", rbind(cVariantTable,ncVariantTable))
+RSQLite::dbWriteTable(mydb, "perSubjectVariantSummary", varsPerSubject)
+
+# subset variant columns for variant table
+varTable <- cVariantTable[,c("CHROM","POS","REF","ALT","sample")]
+colnames(varTable) <- c("chrom","pos","ref","alt","sample")
+varTable$SourceStudy <- "Hartwig-WGS-data"
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable)
+RSQLite::dbListTables(mydb)
+
+RSQLite::dbDisconnect(mydb)
 
 #########################
 ### metadata analysis ###
@@ -364,6 +387,20 @@ write.table(caFusions,outFile,row.names=F,quote=F,sep="\t")
 
 outFile <- paste0(figDir,"/hartwig_fusions_linx_summary.txt")
 write.table(fusionsPerSubject,outFile,row.names=F,quote=F,sep="\t")
+
+##################################
+### write fusion to results db ###
+##################################
+
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+#caFusions$studySource <- "Hartwig"
+RSQLite::dbWriteTable(mydb, "patientObservedFusionTable", caFusions)
+#caFusions$studySource <- "Hartwig"
+RSQLite::dbWriteTable(mydb, "perSubjectFusionSummary", fusionsPerSubject)
+
+RSQLite::dbDisconnect(mydb)
+
 
 #######################
 ### fusion analysis ###
