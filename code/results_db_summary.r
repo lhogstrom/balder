@@ -114,6 +114,8 @@ sourceCancerTypesEval <- sourceCancerTypes %>%
                 oncoterms_do_name = (CANCER_TYPE_lower %in% tolower(oncoterms$records$do_name)) | (CANCER_TYPE_lower_nc %in% tolower(oncoterms$records$do_name)),
                 oncoterm_match_any = oncoterms_primary_site | oncoterms_ot_main_type | oncoterms_ot_name | oncoterms_ot_code | oncoterms_cui_name | oncoterms_efo_name | oncoterms_do_name)
 
+### create exhaustive matching between target name (from source database) and phenoOncoX oncoterms
+tmp.records$CANCER_TYPE <- ctLower
 match.df <- data.frame()
 oncoterms$records$recordID <- seq(1,dim(oncoterms$records)[[1]])
 for (iX in rownames(sourceCancerTypes)) {
@@ -139,6 +141,13 @@ for (iX in rownames(sourceCancerTypes)) {
   }
 }
 
+match.select <- match.df %>%
+  dplyr::group_by(CANCER_TYPE) %>% 
+  dplyr::filter(ot_level==min(ot_level))
+outFile <- paste0(figDir,"/phenoOncoX_database_select_matches.txt")
+write.table(match.select,outFile,sep="\t",row.names = F)
+
+
 # sourceIndex <- sourceCancerTypes %>%
 #   dplyr::mutate(oncoterms_primary_site = toString(which((CANCER_TYPE_lower == tolower(oncoterms$records$primary_site)) | (CANCER_TYPE_lower_nc == tolower(oncoterms$records$primary_site)))),
 #                 oncoterms_ot_main_type = toString(which((CANCER_TYPE_lower == tolower(oncoterms$records$ot_main_type)) | (CANCER_TYPE_lower_nc == tolower(oncoterms$records$ot_main_type)))),
@@ -148,7 +157,6 @@ for (iX in rownames(sourceCancerTypes)) {
                 #oncoterms_efo_name = (CANCER_TYPE_lower %in% tolower(oncoterms$records$efo_name)) | (CANCER_TYPE_lower_nc %in% tolower(oncoterms$records$efo_name)),
                 #oncoterms_do_name = (CANCER_TYPE_lower %in% tolower(oncoterms$records$do_name)) | (CANCER_TYPE_lower_nc %in% tolower(oncoterms$records$do_name)),
                 #oncoterm_match_any = oncoterms_primary_site | oncoterms_ot_main_type | oncoterms_ot_name | oncoterms_ot_code | oncoterms_cui_name | oncoterms_efo_name | oncoterms_do_name)
-
 
 outFile <- paste0(figDir,"/oncoterm_mapping_booleans_v2.txt")
 write.table(sourceCancerTypesEval,outFile,sep="\t",row.names = F)
@@ -166,6 +174,74 @@ srcTblSum <- sourceCancerTypesEval %>%
                    oncoterms_any_term = 100*sum(oncoterm_match_any)/srcCnt)
 outFile <- paste0(figDir,"/oncoterm_mapping_proportions_v2.txt")
 write.table(srcTblSum,outFile,sep="\t",row.names = F)
+
+
+# define and modify source term
+sourceTermOrig <- "Adrenal Gland Angiosarcoma"
+#sourceTermOrig <- "adrenal gland"
+sourceTerm <- tolower(sourceTermOrig)
+sourceTerm <- gsub(" cancer", "", sourceTerm)
+sourceTerm <- gsub(" disease", "", sourceTerm)
+
+### Create matrix of boolean matches
+
+# define name columns
+nameCols <- c("primary_site",
+              "ot_main_type",
+              "ot_name",
+              "ot_code",
+              "cui_name",
+              "efo_name",
+              "do_name")
+oncotermNames <- oncoterms$records[,nameCols]
+queryMatch <- oncotermNames
+# for each column convert to lower
+for (xCol in nameCols) {
+  resRecords <- tolower(oncotermNames[,xCol])
+  resRecords <- gsub("_", " ", resRecords)
+  # remove phrases
+  oncotermNames[,xCol] <- resRecords
+  queryMatch[,xCol] <- grepl(sourceTerm,resRecords)
+}
+
+queryCols <- paste0("query_match_",nameCols)
+colnames(queryMatch) <- queryCols
+
+# provide index
+oncoterms$records$recordID <- seq(1,dim(oncoterms$records)[[1]])
+queryMatch$recordID <- seq(1,dim(queryMatch)[[1]])
+
+# join terms with query results
+oncoQueryRes <- oncoterms$records %>%
+  dplyr::left_join(queryMatch,by="recordID")
+oncoQueryRes$queryHits <- rowSums(oncoQueryRes[,queryCols])
+oncoQueryRes$queryTerm <- sourceTermOrig
+
+outFile <- paste0(figDir,"/oncoterm_query_result_tmp.txt")
+write.table(oncoQueryRes,outFile,sep="\t",row.names = F)
+
+
+## select representative term
+# by max query hit count
+
+# by largest oncotree level - with arbitrary (do term selected)
+
+
+
+
+#' Search take an input string and search exhaustivly across oncoterms
+#'
+#' @param sourceTerm 
+#' @param searchLower 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+getOncotermMatches <- function(sourceTerm, searchLower=T) {
+  return(x)
+}
+
 
 ### edit distance-based matches
 #eDistDf <- adist(sourceCancerTypes$CANCER_TYPE,oncoterms$records[,c("cui_name","efo_name")])
