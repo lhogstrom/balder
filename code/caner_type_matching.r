@@ -8,7 +8,7 @@ library(pheatmap)
 library(RColorBrewer)
 
 ## Goal ##
-# The goal of this script is to summarize the contents of the results db
+# The goal of this script is to summarize cancer type matching approaches 
 
 figDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/cancer_type_matching"
 
@@ -17,9 +17,9 @@ mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.
 RSQLite::dbListTables(mydb)
 
 #### test cancer type mappings ###
-inF <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/oncotree_tumor_types_2021.txt"
-oncotree <- read.csv(inF,sep="\t")
-l1Onco <- unique(oncotree$level_1)
+# inF <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/oncotree_tumor_types_2021.txt"
+# oncotree <- read.csv(inF,sep="\t")
+# l1Onco <- unique(oncotree$level_1)
 
 ########################################
 ## load data from compiled databases ##
@@ -66,12 +66,8 @@ write.table(sourceCancerTypes,outFile,sep="\t",row.names = F)
 ## phenOncoX load ##
 ####################
 
-### compare to phenOncoX
+### load phenOncoX
 download_dir <- tempdir()
-phenTreeDepth2 <- phenOncoX::get_tree(
-  cache_dir = download_dir, max_tree_depth = 2)
-head(phenTreeDepth2$records)
-
 oncoterms <- phenOncoX::get_terms(
   cache_dir = download_dir)
 outFile <- paste0(figDir,"/phenoOncoX_records.txt")
@@ -91,62 +87,103 @@ nameCols <- c("primary_site",
               "efo_name",
               "do_name")
 
-dfRepresenativeMaxHit <- data.frame()
-dfRepresenativeMaxLevel <- data.frame()
-for (sourceTermOrig in sourceCancerTypes$CANCER_TYPE) {
-  print(sourceTermOrig)
-  
-  # define and modify source term
-  #sourceTermOrig <- "Adrenal Gland Angiosarcoma"
-  #sourceTermOrig <- "adrenal gland"
-  sourceTerm <- tolower(sourceTermOrig)
-  sourceTerm <- gsub(" cancer", "", sourceTerm)
-  sourceTerm <- gsub(" disease", "", sourceTerm)
-  
-  ### Create matrix of boolean matches
-  oncotermNames <- oncoterms$records[,nameCols]
-  queryMatch <- oncotermNames
-  # for each column convert to lower
-  for (xCol in nameCols) {
-    resRecords <- tolower(oncotermNames[,xCol])
-    resRecords <- gsub("_", " ", resRecords)
-    # remove phrases
-    oncotermNames[,xCol] <- resRecords
-    queryMatch[,xCol] <- grepl(sourceTerm,resRecords)
-  }
-  
-  queryCols <- paste0("query_match_",nameCols)
-  colnames(queryMatch) <- queryCols
-  
-  # provide index
-  oncoterms$records$recordID <- seq(1,dim(oncoterms$records)[[1]])
-  queryMatch$recordID <- seq(1,dim(queryMatch)[[1]])
-  
-  # join terms with query results
-  oncoQueryRes <- oncoterms$records %>%
-    dplyr::left_join(queryMatch,by="recordID")
-  oncoQueryRes$queryHits <- rowSums(oncoQueryRes[,queryCols])
-  oncoQueryRes$queryTerm <- sourceTermOrig
-  
-  #outFile <- paste0(figDir,"/oncoterm_query_result_tmp.txt")
-  #write.table(oncoQueryRes,outFile,sep="\t",row.names = F)
-  
-  oncoQueryRes$queryHitRepresentative <- F
-  repEntryMaxHit <- oncoQueryRes %>% 
-    dplyr::filter(queryHits > 0) %>%
-    dplyr::filter(queryHits == max(queryHits)) %>%
-    dplyr::filter(dplyr::row_number()==1) %>%
-    mutate(queryHitRepresentative=T)
-  dfRepresenativeMaxHit <- rbind(dfRepresenativeMaxHit,repEntryMaxHit)
+stringTypeList <- c("origSourceString","modifiedSourceString")
+recordMatchList <- c("exactStringMatch","substringMatch")
 
-  repEntryMaxLevel <- oncoQueryRes %>% 
-    dplyr::filter(queryHits > 0) %>%
-    dplyr::arrange(desc(ot_level)) %>%
-    dplyr::filter(dplyr::row_number()==1) %>%
-    mutate(queryHitRepresentative=T)
-  dfRepresenativeMaxLevel <- rbind(dfRepresenativeMaxLevel,repEntryMaxLevel)
-  
+dfRepresenativeSets <- data.frame()
+for (stringType in stringTypeList) {
+  for (recordMatch in recordMatchList) {
+    for (sourceTermOrig in sourceCancerTypes$CANCER_TYPE) {
+      print(sourceTermOrig)
+      
+      # define and modify source term
+      sourceTerm <- tolower(sourceTermOrig)
+      sourceTerm <- gsub(" cancer", "", sourceTerm)
+      sourceTerm <- gsub(" disease", "", sourceTerm) # other terms to consider: “recurrent” or “malignant” or “adult”
+      
+      ### Create matrix of boolean matches
+      oncotermNames <- oncoterms$records[,nameCols]
+      queryMatch <- oncotermNames
+      # for each column convert to lower
+      for (xCol in nameCols) {
+        resRecordsOrig <- oncotermNames[,xCol]
+        resRecords <- tolower(resRecordsOrig)
+        resRecords <- gsub("_", " ", resRecords) 
+        # remove phrases
+        oncotermNames[,xCol] <- resRecords
+        
+        if (stringType == "origSourceString" & recordMatch == "substringMatch") {
+          queryMatch[,xCol] <- grepl(sourceTermOrig,resRecordsOrig) # is it a substring
+        }
+        
+        if (stringType == "modifiedSourceString" & recordMatch == "substringMatch") {
+          queryMatch[,xCol] <- grepl(sourceTerm,resRecords) # is it a substring
+        }
+ 
+        if (stringType == "origSourceString" & recordMatch == "exactStringMatch") {
+          queryMatch[,xCol] <- sourceTermOrig == resRecordsOrig # require exact match
+        }
+        
+        if (stringType == "modifiedSourceString" & recordMatch == "exactStringMatch") {
+          queryMatch[,xCol] <- sourceTerm == resRecords # require exact match
+        }
+        
+        # NOTE: what is the highest resoultion you can have with each database? List average/distirbuion OT level for each DB.
+      }
+      
+      queryCols <- paste0("query_match_",nameCols)
+      colnames(queryMatch) <- queryCols
+      
+      # provide index
+      oncoterms$records$recordID <- seq(1,dim(oncoterms$records)[[1]])
+      queryMatch$recordID <- seq(1,dim(queryMatch)[[1]])
+      
+      # join terms with query results
+      oncoQueryRes <- oncoterms$records %>%
+        dplyr::left_join(queryMatch,by="recordID")
+      oncoQueryRes$queryHits <- rowSums(oncoQueryRes[,queryCols])
+      oncoQueryRes$queryTerm <- sourceTermOrig
+      
+      #outFile <- paste0(figDir,"/oncoterm_query_result_tmp.txt")
+      #write.table(oncoQueryRes,outFile,sep="\t",row.names = F)
+      
+      oncoQueryRes$queryHitRepresentative <- F
+      repEntryMaxHit <- oncoQueryRes %>% 
+        dplyr::filter(queryHits > 0) %>%
+        dplyr::filter(queryHits == max(queryHits)) %>%
+        dplyr::filter(dplyr::row_number()==1) %>%
+        mutate(queryHitRepresentative=T,
+               searchMatchType="MaxHit",
+               stringTypeApproach=stringType,
+               recordMatchApproach=recordMatch)
+      dfRepresenativeSets <- rbind(dfRepresenativeSets,repEntryMaxHit)
+      
+      repEntryMaxLevel <- oncoQueryRes %>% 
+        dplyr::filter(queryHits > 0) %>%
+        dplyr::arrange(desc(ot_level)) %>%
+        dplyr::filter(dplyr::row_number()==1) %>%
+        mutate(queryHitRepresentative=T,
+               searchMatchType="MaxLevel",
+               stringTypeApproach=stringType,
+               recordMatchApproach=recordMatch)
+      dfRepresenativeSets <- rbind(dfRepresenativeSets,repEntryMaxLevel)
+    }
+  }
 }
+
+outFile <- paste0(figDir,"/oncoterm_representative_query_results_full.txt")
+write.table(dfRepresenativeSets,outFile,sep="\t",row.names = F)
+
+table(dfRepresenativeSets$searchMatchType,dfRepresenativeSets$stringTypeApproach,dfRepresenativeSets$recordMatchApproach)
+
+###
+dfRepresenativeMaxHit <- dfRepresenativeSets[dfRepresenativeSets$searchMatchType=="MaxHit" & 
+                                             dfRepresenativeSets$stringTypeApproach=="modifiedSourceString" &
+                                             dfRepresenativeSets$recordMatchApproach=="substringMatch",]
+
+dfRepresenativeMaxLevel <- dfRepresenativeSets[dfRepresenativeSets$searchMatchType=="MaxLevel" & 
+                                                 dfRepresenativeSets$stringTypeApproach=="modifiedSourceString" &
+                                                 dfRepresenativeSets$recordMatchApproach=="substringMatch",]
 
 outFile <- paste0(figDir,"/oncoterm_representative_query_result_max_hits.txt")
 write.table(dfRepresenativeMaxHit,outFile,sep="\t",row.names = F)
@@ -240,8 +277,11 @@ sourceMatch <- sourceCancerTypes %>%
   dplyr::left_join(uniqueMatchTerms,by=c("CANCER_TYPE"="queryTerm")) %>%
   data.frame()
 
+sourceMatch$ot_level_num <- as.numeric(sourceMatch$ot_level)
+sourceMatch[is.na(sourceMatch$ot_level_num),"ot_level_num"] <- 0
+
 ### output source matches
-outFile <- paste0(figDir,"/phenoOncoX_record_ID_matches_all_sources.csv")
+outFile <- paste0(figDir,"/phenoOncoX_record_ID_matches_all_sources_v2.csv")
 write.table(sourceMatch,outFile,sep=",",row.names = F)
 
 ############################################
@@ -314,12 +354,87 @@ uniqueQueryTerms <- repDf %>%
   dplyr::summarise(nQueryTerms = dplyr::n_distinct(queryTerm))
 print(table(uniqueQueryTerms$nQueryTerms))
 
+## show distribution of 
+#dbSummary <- sourceMatch %>%
+#  dplyr::group_by(source.x) %>%
+
+outF <-  paste0(figDir,"/oncoterm_oncotree_level_by_db.png")
+ggplot(sourceMatch,aes(x=ot_level_num))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(source.x~.)+
+  #facet_grid(source.x~.,scale="free_y",)+
+  xlab("Oncotree level")+
+  ggtitle(paste0("Cancer type ontology level"))+
+  #scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+#theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 9,width = 5)
+## to-do: covert to fraction of counts (not raw counts). Split out CIViC and MOA. Include CGI actionability dataset.
+
+
+
+### Parse “ot_code_path” field to get parent connections of the oncotree levels
+# t <- "LUNG-LNET-ALUCA"
+# ts <- strsplit(t,"-")
+# ts[[1]][1]
+# ts[[1]][2]
+# ts[[1]][3]
+
+
 ### to-do for sigve:
 # 2) list out intersection of terms between src1 and src2
 # 3) What is the set of pheonooncox matches for "skin Melanoma" before picking representative entry
 
 
+#### 
+
+# load tables:
+#pcgrAnnotation <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM pcgrAnnotation') # issues loading this data product
+
+
+# pcgrAnnotation
+# actionableSNVsByGenomicCoordinate
+# patientObservedVariantTable
+
+dbAlteations <- actionRules
+### join with MOA - by protein change
+dbAlteration$MOAset <- "Y"
+msk.protein <- msk %>%
+  dplyr::left_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                                     "protein_change"="AAChange"))
+print(table(msk.protein$MOAset,msk.protein$source,exclude = NULL))
+print(table(msk.protein$feature_type,exclude = NULL))
+
+msk.protein.cnt <- msk %>%
+  dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                                      "protein_change"="AAChange")) %>%
+  dplyr::group_by(Hugo_Symbol,protein_change) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
+                   source=paste0(unique(source),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(msk.protein.cnt))
+print(table(msk.protein.cnt$source,exclude = NULL))
+
+### impose cancer type matches (protein)
+msk.protein.cancer <- msk %>%
+  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
+                                 "protein_change"="AAChange",
+                                 "CANCER_TYPE"="MskCancerType"))
+msk.protein.cancer.cnt <- msk.protein.cancer %>%
+  dplyr::group_by(Hugo_Symbol,protein_change,CANCER_TYPE) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(msk.protein.cancer.cnt))
+print(table(msk.protein.cancer.cnt$source,exclude = NULL))
+print(sum(msk.protein.cancer.cnt$n.patients.mutated))
+
+
+
 ########
-outRFile <- paste0(figDir,"/cancerTypeMatching20231005.RData")
+outRFile <- paste0(figDir,"/cancerTypeMatching20231113.RData")
 save.image(file = outRFile)
 
