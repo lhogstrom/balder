@@ -388,6 +388,34 @@ ggsave(outF,height = 9,width = 5)
 
 
 #### 
+### load MSK-IMPACT
+inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/impact_2017_annotated_per_variant.tsv"
+msk <- read.csv(inFile,sep="\t")
+#inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/msk_impact_data_clinical_sample2.txt"
+#patient.msk <- read.csv(inFile,sep="\t")
+inFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/msk_impact_2017/data_clinical_sample.txt"
+patient.msk <- read.csv(inFile,sep="\t",skip = 4)
+msk$Chromosome.str <- paste0("chr",msk$Chromosome)
+msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
+
+### Is there a primary and secondary alt listed? 
+#table(is.na(msk$n_alt_count),exclude=NULL)
+#table(msk$Reference_Allele == msk$Tumor_Seq_Allele1,exclude=NULL)
+
+# join clinical info onto variant info
+all(msk$Tumor_Sample_Barcode %in% patient.msk$SAMPLE_ID)
+
+# join patient info and represenative phenOncoX record
+msk <- msk %>% 
+  dplyr::left_join(patient.msk,by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>%
+  dplyr::left_join(dfRepresenativeMaxLevel[,c("queryTerm","recordID")],by=c("CANCER_TYPE"="queryTerm"))
+
+table(is.na(msk$recordID))
+
+####
+
+
+
 
 # load tables:
 #pcgrAnnotation <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM pcgrAnnotation') # issues loading this data product
@@ -397,14 +425,17 @@ ggsave(outF,height = 9,width = 5)
 # actionableSNVsByGenomicCoordinate
 # patientObservedVariantTable
 
-dbAlteations <- actionRules
+dbAlteration <- actionRules %>%
+  dplyr::left_join(dfRepresenativeMaxLevel[,c("queryTerm","recordID")],by=c("CANCER_TYPE"="queryTerm"))
+table(is.na(dbAlteration$recordID))
+
 ### join with MOA - by protein change
 dbAlteration$MOAset <- "Y"
-msk.protein <- msk %>%
-  dplyr::left_join(dbAlteration,by=c("Hugo_Symbol"="gene",
-                                     "protein_change"="AAChange"))
-print(table(msk.protein$MOAset,msk.protein$source,exclude = NULL))
-print(table(msk.protein$feature_type,exclude = NULL))
+# msk.protein <- msk %>%
+#   dplyr::left_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+#                                      "protein_change"="AAChange"))
+# print(table(msk.protein$MOAset,msk.protein$source,exclude = NULL))
+# print(table(msk.protein$feature_type,exclude = NULL))
 
 msk.protein.cnt <- msk %>%
   dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
@@ -416,9 +447,9 @@ msk.protein.cnt <- msk %>%
 print(dim(msk.protein.cnt))
 print(table(msk.protein.cnt$source,exclude = NULL))
 
-### impose cancer type matches (protein)
+### impose cancer type matches (protein) - orig string
 msk.protein.cancer <- msk %>%
-  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
+  dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
                                  "protein_change"="AAChange",
                                  "CANCER_TYPE"="MskCancerType"))
 msk.protein.cancer.cnt <- msk.protein.cancer %>%
@@ -432,6 +463,22 @@ print(dim(msk.protein.cancer.cnt))
 print(table(msk.protein.cancer.cnt$source,exclude = NULL))
 print(sum(msk.protein.cancer.cnt$n.patients.mutated))
 
+
+### impose cancer type matches (protein) - phenoOncoX recrod
+msk.protein.cancer <- msk %>%
+  dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                                      "protein_change"="AAChange",
+                                      "recordID"="recordID"))
+msk.protein.cancer.cnt <- msk.protein.cancer %>%
+  dplyr::group_by(Hugo_Symbol,protein_change,recordID) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(recordID),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(msk.protein.cancer.cnt))
+print(table(msk.protein.cancer.cnt$source,exclude = NULL))
+print(sum(msk.protein.cancer.cnt$n.patients.mutated))
 
 
 ########
