@@ -1,0 +1,302 @@
+---
+title: "Balder Cancer Type Matching - Analysis Report"
+format: pdf
+editor: visual
+---
+
+## Overview
+
+This document contains analysis reporting for the Balder 'cancer_type_matching' procedure. The goal of this work is to apply a cross-ontology framework to improve mapping of cancer types represented in both genomic data sets and clinically actionability biomarker databases.
+
+## Loading data
+
+This notebook works by first loading the data generated in "cancer_type_matching.r' into memory
+
+```{r}
+#| echo: false
+#| include: false
+library(dplyr)
+library(UpSetR)
+library(ggplot2)
+library(pheatmap)
+library(RColorBrewer)
+```
+
+```{r}
+inRFile <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/cancer_type_matching/cancerTypeMatching20231212.RData"
+load(inRFile)
+```
+
+# Methods overview
+
+1.  Load MySQL data products for genomic datasets and actionability databases
+
+2.  Create a table of "source cancer types" which contains all unique cancer type strings from various each source from step 1)
+
+3.  Create a lower case string and remove substrings (such as "cancer" or "disease") to prepare for query
+
+4.  Load PhenOncoX records database of cancer type terms
+
+5.  Get a representative phenoOncoX ID for each source term
+
+    1.  Loop through each unique source term
+
+    2.  For each unique term, create a lower case string and remove substrings (such as "cancer" or "disease") to prepare for query
+
+    3.  Identify string matches in the phenOncoX record table. There are multiple columns of terms in the record table. Create a boolean matrix of match/no-match for each source term
+
+    4.  Join the record information to the matrix of matches
+
+    5.  select a representative phenOncoX record for each unique source term: max hit or max level
+
+    6.  identify which column drove the hit and make summary plots
+
+6.  Make pairwise comparisons between each of the databases.
+
+    1.  How many original source terms from db X are found in db Y
+
+    2.  How many phenOncoX records from db X are found in db Y
+
+7.  create heatmap showing pairwise comparisons across all DBs
+
+# Source term search approach
+
+Eight search types were tested by varying three aspects cancer type matching:
+
+### Definition 1: string modification
+
+Variables defining if source term strings are modified:
+
+-   **modifiedSourceString** = For each unique term, create a lower case string and remove substrings (such as "cancer" or "disease") to prepare for query.
+
+-   **origSourceString** = unmodified cancer type string from source
+
+### Definition 2: Exact or substring match
+
+Approach for text matching to any given phenOncoX record:
+
+-   **substringMatch** = Source term is allowed to be a substring of the record term when testing for a match.
+
+-   **exactStringMatch** = source term must match record entry exactly
+
+### Definition 3: representative entry selection
+
+For each unique source term, pick a single representative PhenoOncoX entry match based on either:
+
+-   **MaxHits** = PhenoOncoX entry where the source term was contained in the largest number of fields 
+
+-   **MaxLevel** = a PhenoOncoX entry that matched on at least one column and had the largest oncotree level
+
+The following table shows entry counts after source search in phenOncoX record matching:
+
+|                  |          | modifiedSourceString | origSourceString |
+|------------------|----------|----------------------|------------------|
+| exactStringMatch | MaxHit   | 149 (50%)            | 98 (32%)         |
+| exactStringMatch | MaxLevel | 149 (50%)            | 98 (32%)         |
+| substringMatch   | MaxHit   | 274 (92%)            | 216 (72%)        |
+| substringMatch   | MaxLevel | 274 (92%)            | 216 (72%)        |
+
+For the rest of the document, results for the following approach are highlighted: SubstringMatch & MaxLevel & .modifiedSourceString
+
+# Results summary
+
+Plot the number of query hits, plot the oncotree higherarchy number
+
+```{r}
+#| echo: false
+#| warning: false
+### 
+outF <-  paste0(figDir,"/oncoterm_query_matches_max_hit.png")
+ggplot(dfRepresenativeMaxHit,aes(x=queryHits))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  #facet_grid(Hugo_Symbol~direction,scale="free_y",)+
+  xlab("PhenoOncoX query mathces")+
+  ggtitle(paste0("Largest number of column matches for \n query hits"))+
+  #scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+
+```
+
+Max level results
+
+```{r}
+#| echo: false
+#| warning: false
+outF <-  paste0(figDir,"/oncoterm_query_matches_max_level.png")
+ggplot(dfRepresenativeMaxLevel,aes(x=queryHits))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  #facet_grid(Hugo_Symbol~direction,scale="free_y",)+
+  xlab("PhenoOncoX query mathces")+
+  ggtitle(paste0("Largest number of column matches for \n query hits"))+
+  #scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+#theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+```
+
+# Pairwise comparisons of cancer type source terms
+
+```{r}
+#| echo: false
+#heatmapFile=paste0(figDir,"/phenoOncoX_record_ID_term_match_heatmap.pdf")
+pheatmap(sourceTermDfMtrx,
+                    show_rownames = T,#labels_row = rownames(raw.prot),
+                    show_colnames = T,#labels_col = meta[gnums,"name"],
+                    color = rev(brewer.pal(8,"GnBu")),
+                    display_numbers = T,
+                    fontsize_col = 9,
+                    fontsize_row = 9,
+                    cluster_cols=F,cluster_rows=F,
+                    width = 8, height = 8)
+```
+
+# Table for MSK to MOA/CIViC counts by cancer type matching approach
+
+### Computing actionable variant counts for different match approaches
+
+Three different actionablity matching approaches were computed:
+
+1.  Unrestricted where no cancer type matching was imposed
+
+2.  Restricted with raw cancer type string matching
+
+3.  Restricted with ontology-based cancer type matching
+
+```{r}
+#| echo: false
+#| include: false
+
+### Unristricted match events
+msk.protein.unrestricted.cnt <- msk %>%
+  dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                                      "protein_change"="AAChange")) %>%
+  dplyr::group_by(Hugo_Symbol,protein_change) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
+                   source=paste0(unique(source),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(msk.protein.unrestricted.cnt))
+print(table(msk.protein.unrestricted.cnt$source,exclude = NULL))
+
+### impose cancer type matches (protein) - orig string
+msk.protein.restricted.raw.cancer <- msk %>%
+  dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                                 "protein_change"="AAChange",
+                                 "CANCER_TYPE"="MskCancerType"))
+msk.protein.restricted.raw.cancer.cnt <- msk.protein.restricted.raw.cancer %>%
+  dplyr::group_by(Hugo_Symbol,protein_change,CANCER_TYPE) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(msk.protein.restricted.raw.cancer.cnt))
+print(table(msk.protein.restricted.raw.cancer.cnt$source,exclude = NULL))
+print(sum(msk.protein.restricted.raw.cancer.cnt$n.patients.mutated))
+
+### impose cancer type matches (protein) - phenoOncoX recrod
+msk.protein.restricted.ontology <- msk %>%
+  dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
+                                      "protein_change"="AAChange",
+                                      "recordID"="recordID")) # restrict to subset of most imporant columns
+msk.protein.restricted.ontology.cnt <- msk.protein.restricted.ontology %>%
+  dplyr::group_by(Hugo_Symbol,protein_change,recordID) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(msk.protein.restricted.ontology.cnt))
+print(table(msk.protein.restricted.ontology.cnt$source,exclude = NULL))
+print(sum(msk.protein.restricted.ontology.cnt$n.patients.mutated))
+
+```
+
+### Reporting table
+
+```{r}
+#| echo: false
+#knitr::kable(mtcars[1:5, ], )
+n.patients <- length(unique(msk$PATIENT_ID))
+n.variants <- length(unique(dbAlteration$AAChange))
+  
+c1 <- c("Raw string match","Ontology-based match","N/A")
+c2 <- c("Restricted","Restricted","Unestricted")
+c3 <- c(dim(msk.protein.restricted.raw.cancer.cnt)[[1]], 
+        dim(msk.protein.restricted.ontology.cnt)[[1]], 
+        dim(msk.protein.unrestricted.cnt)[[1]])
+c4 <- paste0(round(100*(c3/n.variants),1),"%")
+c5 <- c(sum(msk.protein.restricted.raw.cancer.cnt$n.patients.mutated), 
+        sum(msk.protein.restricted.ontology.cnt$n.patients.mutated), 
+        sum(msk.protein.unrestricted.cnt$n.patients.mutated))
+c6 <- paste0(round(100*(c5/n.patients),1),"%") 
+# Create a data frame
+df <- data.frame(c1=c1, c2=c2, c3=c3, c4=c4, c5=c5, c6=c6)
+colnames(df) <- c("Cancer type matching approach", "Cancer type match restriction","number of variants","percent of actionable mutations","number of patients","percent of patients")
+# Print the data frame
+#print(df)
+knitr::kable(df, )
+
+```
+
+### Why are ontology-based matching rates lower for restricted actionability events?
+
+-   Are there any patients with actionable mutations found in raw matching but not ontology-based?
+
+```{r}
+#| echo: false
+
+#table(!msk.protein.restricted.raw.cancer$PATIENT_ID %in% msk.protein.restricted.ontology$PATIENT_ID,exclude=NULL)
+
+iOntology.based.unique.patients <- !msk.protein.restricted.ontology$PATIENT_ID %in% msk.protein.restricted.raw.cancer$PATIENT_ID
+#table(iOntology.based.unique.patients,exclude=NULL)
+
+# patients only found by ontology-based match
+roMatch <- msk.protein.restricted.ontology[iOntology.based.unique.patients,]
+roUniquePatients <- length(unique(roMatch$PATIENT_ID))
+roUniqueEntries <- dim(roMatch)[[1]]
+```
+
+### Where was the benefit seen for the ontology-based approach? What new types of matches did it enable?
+
+The were `r roUniqueEntries` unique actionability entries found with the ontology-based approach, but not with raw cancer type matching. These matches derived from `r roUniquePatients` unique subjects.
+
+The following table shows the breakdown of patient count improvements:
+
+```{r}
+#| echo: false
+#| warning: false
+roCnt <- roMatch %>%
+  dplyr::group_by(CANCER_TYPE.x) %>%
+  dplyr::summarise(number.of.unique.patients=dplyr::n_distinct(PATIENT_ID)) %>%
+  dplyr::arrange(desc(number.of.unique.patients))
+colnames(roCnt) <- c("cancer type", "number of patients")
+knitr::kable(roCnt, )
+```
+
+Were these cancer types in the raw text?
+
+```{r}
+#| echo: false
+
+#descrepancy types
+desc.cnts <- roMatch %>%
+  dplyr::group_by(CANCER_TYPE.x,CANCER_TYPE.y,recordID) %>%
+  dplyr::summarise(number.of.unique.patients=dplyr::n_distinct(PATIENT_ID)) %>%
+  dplyr::arrange(desc(number.of.unique.patients))
+colnames(desc.cnts) <- c("cancer type - MSK", "cancer type - CIVIC/MOA", "phenOncoX record ID","number of patients")
+knitr::kable(desc.cnts, )
+```
+
+List out corresponding phenoOncoX records
+
+### What proportion of entries were cancer type entries were in MSK?
+
+# Feedback from Sigve: 12/18/23
+
+-   Extend the primary table to include overall matching results for all genomic datasets and all actionability datasets (list results as having many role)
+
+-   Note that we are working only with SNVs for matching at this time (some small indels?)
