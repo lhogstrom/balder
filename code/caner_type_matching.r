@@ -436,52 +436,51 @@ dbAlteration$MOAset <- "Y"
 #                                      "protein_change"="AAChange"))
 # print(table(msk.protein$MOAset,msk.protein$source,exclude = NULL))
 # print(table(msk.protein$feature_type,exclude = NULL))
-
-msk.protein.cnt <- msk %>%
+msk.protein.unrestricted.cnt <- msk %>%
   dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
                                       "protein_change"="AAChange")) %>%
   dplyr::group_by(Hugo_Symbol,protein_change) %>%
   dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
                    source=paste0(unique(source),collapse=";")) %>%
   dplyr::arrange(desc(n.patients.mutated))
-print(dim(msk.protein.cnt))
-print(table(msk.protein.cnt$source,exclude = NULL))
+print(dim(msk.protein.unrestricted.cnt))
+print(table(msk.protein.unrestricted.cnt$source,exclude = NULL))
 
 ### impose cancer type matches (protein) - orig string
-msk.protein.cancer <- msk %>%
+msk.protein.restricted.raw.cancer <- msk %>%
   dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
-                                 "protein_change"="AAChange",
-                                 "CANCER_TYPE"="MskCancerType"))
-msk.protein.cancer.cnt <- msk.protein.cancer %>%
+                                      "protein_change"="AAChange",
+                                      "CANCER_TYPE"="MskCancerType"))
+msk.protein.restricted.raw.cancer.cnt <- msk.protein.restricted.raw.cancer %>%
   dplyr::group_by(Hugo_Symbol,protein_change,CANCER_TYPE) %>%
   dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
                    source=paste0(unique(source),collapse=";"),
                    Drugs=paste0(unique(Drugs),collapse=";"),
                    ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
   dplyr::arrange(desc(n.patients.mutated))
-print(dim(msk.protein.cancer.cnt))
-print(table(msk.protein.cancer.cnt$source,exclude = NULL))
-print(sum(msk.protein.cancer.cnt$n.patients.mutated))
-
+print(dim(msk.protein.restricted.raw.cancer.cnt))
+print(table(msk.protein.restricted.raw.cancer.cnt$source,exclude = NULL))
+print(sum(msk.protein.restricted.raw.cancer.cnt$n.patients.mutated))
 
 ### impose cancer type matches (protein) - phenoOncoX recrod
-msk.protein.cancer <- msk %>%
+msk.protein.restricted.ontology <- msk %>%
   dplyr::inner_join(dbAlteration,by=c("Hugo_Symbol"="gene",
                                       "protein_change"="AAChange",
-                                      "recordID"="recordID"))
-msk.protein.cancer.cnt <- msk.protein.cancer %>%
+                                      "recordID"="recordID")) # restrict to subset of most imporant columns
+msk.protein.restricted.ontology.cnt <- msk.protein.restricted.ontology %>%
   dplyr::group_by(Hugo_Symbol,protein_change,recordID) %>%
-  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(recordID),
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(PATIENT_ID),
                    source=paste0(unique(source),collapse=";"),
                    Drugs=paste0(unique(Drugs),collapse=";"),
                    ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
   dplyr::arrange(desc(n.patients.mutated))
-print(dim(msk.protein.cancer.cnt))
-print(table(msk.protein.cancer.cnt$source,exclude = NULL))
-print(sum(msk.protein.cancer.cnt$n.patients.mutated))
+print(dim(msk.protein.restricted.ontology.cnt))
+print(table(msk.protein.restricted.ontology.cnt$source,exclude = NULL))
+print(sum(msk.protein.restricted.ontology.cnt$n.patients.mutated))
+
 
 
 ########
-outRFile <- paste0(figDir,"/cancerTypeMatching20231113.RData")
+outRFile <- paste0(figDir,"/cancerTypeMatching20231212.RData")
 save.image(file = outRFile)
 
