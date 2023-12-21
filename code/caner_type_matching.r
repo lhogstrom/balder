@@ -10,9 +10,9 @@ library(RColorBrewer)
 ## Goal ##
 # The goal of this script is to summarize cancer type matching approaches 
 
-figDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/cancer_type_matching"
+figDir <- "../../output/cancer_type_matching_20231220"
 
-bDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/resultsDb"
+bDir <- "../../data/processed/balderResultsDb"
 mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
 RSQLite::dbListTables(mydb)
 

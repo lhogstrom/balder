@@ -5,8 +5,8 @@ library(ggplot2)
 library(DBI)
 library(RSQLite)
 
-baseDir <- "/data/larsonh/hartwig"
-#baseDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/Hartwig/data" 
+#baseDir <- "/data/larsonh/hartwig"
+baseDir <- "../../data/Hartwig/data" 
 figDir <- paste0(baseDir,"/output_v4")
 
 inFile <- paste0(baseDir,"/samples.txt")
@@ -22,7 +22,7 @@ hTreatment <- read.csv(inFile,sep="\t")
 ### create connection to results db ###
 ########################################
 
-bDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/resultsDb"
+bDir <- "../../data/processed/balderResultsDb"
 mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
 
 RSQLite::dbWriteTable(mydb, "hartwigMetadata", hMeta)
