@@ -300,3 +300,15 @@ List out corresponding phenoOncoX records
 -   Extend the primary table to include overall matching results for all genomic datasets and all actionability datasets (list results as having many role)
 
 -   Note that we are working only with SNVs for matching at this time (some small indels?)
+
+-   Was thinking of a suggested \"rationale\" for this project, kind of like an abstract, which might help to structure things moving forward:\
+    \
+    - What\'s the topic addressed? - Matching of molecular data from cancer patients with existing biomarkers - precision cancer medicine\
+    - Why is this topic important - \<Elaborate\>, and key: diagnostic and therapeutic biomarkers are frequently attributed to distinct subtypes of cancer\
+    - Current challenge: the use of controlled vocabularies (i.e. ontologies) for the definition of cancer types vary considerably across existing resources (clinical actionability databases)\
+    - What have we done:\
+       - We have surveyed several of the main actionability databases (CIViC, MoA, OncoKB, CGI) and demonstrate their variability with respect to cancer type notation and use of disease ontologies\
+       - Using somatic variant data from tumor profiling of cancer patients, we show how cross-referencing to multiple disease ontologies significantly improves\
+         the capability for accurate detection of actionable variants\
+    \
+    Providing a table with all the actionability resources, and what kind of disease/phenotype ontology they use (e.g. DO, EFO, MeSH, or none at all) would also be informative to the reader. And Similarly for large-scale sequencing projects (TCGA, MSK-IMPACT, Hartwig).
