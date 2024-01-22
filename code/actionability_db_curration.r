@@ -279,7 +279,7 @@ mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.
 
 RSQLite::dbWriteTable(mydb, "hartwigMetadata", hMeta)
 RSQLite::dbWriteTable(mydb, "hartwigPreBiopsyDrugs", hTreatment)
-RSQLite::dbDisconnect(mydb)
+#RSQLite::dbDisconnect(mydb)
 
 ### 
 #inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/impact_2017_annotated_per_variant.tsv"
@@ -287,39 +287,122 @@ RSQLite::dbDisconnect(mydb)
 inFile <- "../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt"
 patient.msk <- read.csv(inFile,sep="\t")
 
-mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+#mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
 
 RSQLite::dbWriteTable(mydb, "mskMetadata", patient.msk)
 
 ### PANCAN
 
-inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_cna.txt"
-cna.full <- read.csv(inFile,sep="\t")
-
-inFile <- "../../data/ICGC_TCGA_WGS_2020/CNA_Genes.txt"
-cyto <- read.csv(inFile,sep="\t")
-
-inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_mutations.txt"
-sv <- read.csv(inFile,sep="\t",skip = 2)
-
 inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt"
 pancanSampInfo <- read.csv(inFile,sep="\t",skip = 4)
 
-
-mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+#mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
 
 RSQLite::dbWriteTable(mydb, "pancanMetadata", pancanSampInfo)
 
-# subset variant columns for variant table
-# varTable <- sv[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
-# colnames(varTable) <- c("chrom","pos","ref","alt","sample")
-# varTable$SourceStudy <- "PANCAN-WGS-data"
-# 
-# vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
-# print(dim(vRes))
-# RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable,append=T)
-# vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
-# print(dim(vRes))
 
 RSQLite::dbDisconnect(mydb)
+
+###########################################
+### short variants - SNV and indel data ###
+###########################################
+
+### pancan
+#inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_cna.txt"
+#cna.full <- read.csv(inFile,sep="\t")
+#
+#inFile <- "../../data/ICGC_TCGA_WGS_2020/CNA_Genes.txt"
+#cyto <- read.csv(inFile,sep="\t")
+#
+inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_mutations.txt"
+sv <- read.csv(inFile,sep="\t",skip = 2)
+
+#subset variant columns for variant table
+varTable <- sv[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
+colnames(varTable) <- c("chrom","pos","ref","alt","sample")
+varTable$SourceStudy <- "PANCAN-WGS-data"
+
+vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+print(dim(vRes))
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable,append=T)
+vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+print(dim(vRes))
+
+### MSK-IMPACT
+inFile <- "../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv"
+msk <- read.csv(inFile,sep="\t")
+
+### MC3 TCGA
+inFile <- "../../data/mc3_tcga/scratch.sample.mc3.maf"
+#inFile <- "../../data/mc3_tcga/mc3.v0.2.8.PUBLIC.maf"
+mc3 <- read.csv(inFile,sep="\t")
+
+### consequence df
+selectColM3 <- c("Hugo_Symbol",
+                 "Variant_Classification",
+                 "Tumor_Sample_Barcode",
+                 "HGVSp_Short",
+                 "Transcript_ID")
+# barcode naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
+# tissue site codes: https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/tissue-source-site-codes
+conseq.mc3 <- mc3[,selectColM3]
+inFile <- "../../data/curration/TCGA_tissue_source_site_codes.csv"
+tss <- read.csv(inFile,sep=",")
+
+### AACR GENIE
+inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_mutations_extended.txt"
+genie <- read.csv(inFile,sep="\t")
+
+inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
+patient.genie <- read.csv(inFile,sep="\t",skip=4)
+print(dim(patient.genie))
+print(length(unique(patient.genie$PATIENT_ID)))
+table(patient.genie$CENTER)
+
+# gpatientCols <- c("Patient.Identifier", 
+#                   "Sex", 
+#                   "Primary.Race", 
+#                   "Ethnicity.Category", 
+#                   "Center", 
+#                   "Interval.in.days.from.DOB.to.date.of.last.contact",
+#                   "Interval.in.days.from.DOB.to.DOD", 
+#                   "Year.of.last.contact",                
+#                   "Vital.Status",                            
+#                   "Year.of.death")
+
+inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt"
+sample.genie <- read.csv(inFile,sep="\t",skip=4)
+table(sample.genie$SEQ_ASSAY_ID)
+
+#colnames(genie) %in% colnames(sv)
+#colnames(genie) %in% colnames(mc3)
+
+
+# join sample, patient info to variant info
+dim(genie)
+genie.full <- genie %>%
+  dplyr::left_join(sample.genie,by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>%
+  dplyr::left_join(patient.genie,by="PATIENT_ID")
+dim(genie.full)
+
+# what proportion of all patients are in the variant table?
+table(patient.genie$PATIENT_ID %in% genie.full$PATIENT_ID)
+
+# how many variants per patient
+genie.var.cnt <- genie.full %>%
+  dplyr::group_by(PATIENT_ID) %>% 
+  dplyr::summarise(n=n())
+table(genie.var.cnt$n)  
+
+### select the first variant for each patient arbitrarily. What assays was used? 
+panel.tmp <- genie.full %>%
+  dplyr::group_by(PATIENT_ID) %>%
+  dplyr::filter(dplyr::row_number()==1)
+table(panel.tmp$SEQ_ASSAY_ID)
+
+
+
+### to-do: check to see if previous MSK-IMPACT data set is a subset of the newest GENIE dataset
+### add label for assay used - what does each panel capture? 
+
 
