@@ -100,7 +100,7 @@ For the rest of the document, results for the following approach are highlighted
 
 # Results summary
 
-Plot the number of query hits, plot the oncotree higherarchy number
+Plot the number of query hits, plot the oncotree hierarchy number
 
 ```{r}
 #| echo: false

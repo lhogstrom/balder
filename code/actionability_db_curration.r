@@ -300,6 +300,26 @@ pancanSampInfo <- read.csv(inFile,sep="\t",skip = 4)
 
 RSQLite::dbWriteTable(mydb, "pancanMetadata", pancanSampInfo)
 
+### AACR GENIE
+
+inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
+patient.genie <- read.csv(inFile,sep="\t",skip=4)
+# gpatientCols <- c("Patient.Identifier", 
+#                   "Sex", 
+#                   "Primary.Race", 
+#                   "Ethnicity.Category", 
+#                   "Center", 
+#                   "Interval.in.days.from.DOB.to.date.of.last.contact",
+#                   "Interval.in.days.from.DOB.to.DOD", 
+#                   "Year.of.last.contact",                
+#                   "Vital.Status",                            
+#                   "Year.of.death")
+
+inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt"
+sample.genie <- read.csv(inFile,sep="\t",skip=4)
+
+RSQLite::dbWriteTable(mydb, "GeniePatientData", patient.genie)
+RSQLite::dbWriteTable(mydb, "GenieClinicalSampleData", sample.genie)
 
 RSQLite::dbDisconnect(mydb)
 
@@ -352,31 +372,13 @@ tss <- read.csv(inFile,sep=",")
 ### AACR GENIE
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_mutations_extended.txt"
 genie <- read.csv(inFile,sep="\t")
+RSQLite::dbWriteTable(mydb, "GeniePatientVarients", genie)
 
-inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
-patient.genie <- read.csv(inFile,sep="\t",skip=4)
-print(dim(patient.genie))
-print(length(unique(patient.genie$PATIENT_ID)))
-table(patient.genie$CENTER)
-
-# gpatientCols <- c("Patient.Identifier", 
-#                   "Sex", 
-#                   "Primary.Race", 
-#                   "Ethnicity.Category", 
-#                   "Center", 
-#                   "Interval.in.days.from.DOB.to.date.of.last.contact",
-#                   "Interval.in.days.from.DOB.to.DOD", 
-#                   "Year.of.last.contact",                
-#                   "Vital.Status",                            
-#                   "Year.of.death")
-
-inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt"
-sample.genie <- read.csv(inFile,sep="\t",skip=4)
-table(sample.genie$SEQ_ASSAY_ID)
 
 #colnames(genie) %in% colnames(sv)
 #colnames(genie) %in% colnames(mc3)
 
+### Summary stats
 
 # join sample, patient info to variant info
 dim(genie)
@@ -388,11 +390,7 @@ dim(genie.full)
 # what proportion of all patients are in the variant table?
 table(patient.genie$PATIENT_ID %in% genie.full$PATIENT_ID)
 
-# how many variants per patient
-genie.var.cnt <- genie.full %>%
-  dplyr::group_by(PATIENT_ID) %>% 
-  dplyr::summarise(n=n())
-table(genie.var.cnt$n)  
+
 
 ### select the first variant for each patient arbitrarily. What assays was used? 
 panel.tmp <- genie.full %>%
@@ -400,9 +398,13 @@ panel.tmp <- genie.full %>%
   dplyr::filter(dplyr::row_number()==1)
 table(panel.tmp$SEQ_ASSAY_ID)
 
+table(patient.genie$CENTER)
 
 
 ### to-do: check to see if previous MSK-IMPACT data set is a subset of the newest GENIE dataset
 ### add label for assay used - what does each panel capture? 
 
+########
+#outRFile <- paste0(figDir,"/cancerTypeMatching20231212.RData")
+#save.image(file = outRFile)
 

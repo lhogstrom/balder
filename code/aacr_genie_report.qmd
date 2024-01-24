@@ -1,0 +1,383 @@
+---
+title: "AACR GENIE Variant Summary Report"
+format: pdf
+editor: visual
+---
+
+## Overview
+
+This document contains analysis summarizing variant, sample, and patient information from the AACR Project GENIE data set. This is among the largest public cancer data sets with data from over 160,000 patients.
+
+Data have been are aggregated from multiple institutions and multiple NGS panels were used to collect mutation data.
+
+## Loading data
+
+```{r}
+#| echo: false
+#| include: false
+library(dplyr)
+library(UpSetR)
+library(ggplot2)
+library(pheatmap)
+library(RColorBrewer)
+library(Rtsne)
+library(reticulate)
+library(GGally)
+```
+
+```{r}
+#| echo: false
+#| include: false
+
+# set python path 
+reticulate::use_condaenv(condaenv="/Users/larsonhogstrom/anaconda3/envs/onconpc_conda_env/")
+```
+
+```{r}
+bDir <- "../../data/processed/balderResultsDb"
+figDir <- "../../output/actionability_db_curration_20231220"
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GeniePatientVarients')
+sample.genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GenieClinicalSampleData')
+patient.genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GeniePatientData')
+
+genie.full <- genie %>%
+  dplyr::left_join(sample.genie,by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>%
+  dplyr::left_join(patient.genie,by="PATIENT_ID")
+dim(genie.full)
+
+### to do: print out column names. What is there in terms of variant info and annotations
+```
+
+# Results summary
+
+what proportion of all patients are in the variant table?
+
+```{r}
+#| echo: false
+#| warning: false
+# what proportion of all patients are in the variant table?
+print(table(patient.genie$PATIENT_ID %in% genie.full$PATIENT_ID))
+```
+
+# Variant counts
+
+Variants per sample for all available data:
+
+```{r}
+#| echo: false
+#| warning: false
+
+# how many variants per patient
+genie.var.cnt <- genie.full %>%
+  dplyr::group_by(PATIENT_ID) %>% 
+  dplyr::summarise(n=n())
+
+outF <-  paste0(figDir,"/oncoterm_query_matches_max_hit.png")
+ggplot(genie.var.cnt,aes(x=n))+
+  geom_histogram(alpha=.4)+
+  scale_x_log10()+
+  theme_bw()+
+  xlab("number of variants per sample")+
+  ylab("samples")+
+  ggtitle(paste0("Variant count per sample"))+
+  #scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+```
+
+Variants per sample for three top panels: "MSK-IMPACT468", "DFCI-ONCOPANEL-3.1", "MSK-IMPACT505".
+
+```{r}
+#| echo: false
+#| warning: false
+
+panelSubsetList <- c("MSK-IMPACT468",
+                     "DFCI-ONCOPANEL-3.1",
+                     "MSK-IMPACT505")
+
+# how many variants per patient
+genie.var.cnt <- genie.full %>%
+  dplyr::filter(SEQ_ASSAY_ID %in% panelSubsetList) %>%
+  dplyr::group_by(PATIENT_ID) %>% 
+  dplyr::summarise(n=n())
+
+outF <-  paste0(figDir,"/genie_variants_per_sample.png")
+ggplot(genie.var.cnt,aes(x=n))+
+  geom_histogram(alpha=.4)+
+  scale_x_log10()+
+  theme_bw()+
+  xlab("number of variants per sample \n top panels")+
+  ylab("samples")+
+  ggtitle(paste0("Variant count per sample"))+
+  #scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+```
+
+# Panels
+
+Patients per panel type
+
+```{r}
+#| echo: false
+#| warning: false
+genie.full$gene_and_hgvsp <- paste0(genie.full$Hugo_Symbol,"-",genie.full$HGVSp)
+panel.cnt <- genie.full %>%
+  dplyr::group_by(SEQ_ASSAY_ID) %>%
+  dplyr::summarise(number.patients.per.panel=dplyr::n_distinct(PATIENT_ID),
+                   number.genes.per.panel=dplyr::n_distinct(Hugo_Symbol),
+                   number.distinct.AA.changes=dplyr::n_distinct(gene_and_hgvsp)) %>%
+  dplyr::arrange(desc(number.patients.per.panel))
+knitr::kable(panel.cnt, )
+```
+
+The following plot shows the number of genes tested in each panel
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: genes-panel
+#| fig-cap: "Number of genes tested across all assay panels in GENIE"
+
+outF <-  paste0(figDir,"/genie_gene_panel_count.png")
+ggplot(panel.cnt,aes(x=number.genes.per.panel))+
+  geom_histogram(alpha=.4)+
+  scale_x_log10()+
+  theme_bw()+
+  xlab("number of genes")+
+  ylab("number of panels")+
+  ggtitle(paste0("Genes per panel"))+
+  #scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+ggsave(outF,height = 5,width = 5)
+```
+
+How many samples (or patients) have been tested with more than one panel?
+
+To-do: Is the coverage across panels? 10X-30X? Tumor and normal coverage?
+
+# Variant Effect and Protein annotation 
+
+Variant type
+
+```{r}
+#| echo: false
+#| warning: false
+vTbl <- genie.full %>%
+  dplyr::group_by(Variant_Type) %>%
+  dplyr::summarise(
+    variant_count = n(), 
+    Percentage = n() / nrow(genie.full) * 100
+  )
+knitr::kable(vTbl, )
+```
+
+Variant Classificaitons
+
+```{r}
+#| echo: false
+#| warning: false
+vClass <- genie.full %>%
+  dplyr::group_by(Variant_Classification) %>%
+  dplyr::summarise(
+    variant_count = n(), 
+    Percentage = n() / nrow(genie.full) * 100
+  )
+knitr::kable(vClass, )
+```
+
+Concordance between Polyphen and SIFT predictions
+
+```{r}
+table(genie.full$Polyphen_Prediction,genie.full$SIFT_Prediction)
+```
+
+MAF by Polyphen "probably damaging" or "possibly damaging"
+
+```{r}
+#| echo: false
+#| warning: false
+genie.full$MAF <- 100*(genie.full$t_alt_count / (genie.full$t_ref_count+genie.full$t_alt_count))
+genie.full$polyphen_summary <- genie.full$Polyphen_Prediction %in% c("probably_damaging","possibly_damaging")
+
+ggplot(genie.full,aes(x=MAF,fill=polyphen_summary))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(polyphen_summary~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  xlim(0,100)+
+  ggtitle(paste0("MAF of variants by Polyphen Damaging assignment"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+MAF by SIFT "deleterious" or "deleterious low confidence"
+
+```{r}
+#| echo: false
+#| warning: false
+#| label: sift-maf
+#| fig-cap: "Variant MAF values for variants with and without SIFT deleterious assignments"
+genie.full$MAF <- 100*(genie.full$t_alt_count / (genie.full$t_ref_count+genie.full$t_alt_count))
+genie.full$SIFT_summary <- genie.full$SIFT_Prediction %in% c("deleterious","deleterious_low_confidence")
+
+ggplot(genie.full,aes(x=MAF,fill=SIFT_summary))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(SIFT_summary~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  xlim(0,100)+
+  ggtitle(paste0("MAF of variants by SIFT deleterious assignment"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+To do: Look at SIFT/polyphen scores for TSG genes only but leave out ONC
+
+-   read in Vogelstein list of genes
+
+To do: read recent GENIE manuscripts. Have they looked at prevalence of common cancer biomarkers already? can we reproduce their findings?
+
+To do: apply cancer type ontology scheme
+
+To do: perform actionability matching (with and without cancer type matching)
+
+# Variant signatures by assay type
+
+Perform demintionality reduction on base pair transition signatures
+
+Background: Different assays can show different profiles of background variants based. If background signals vary substantially, this could represent an important confounding factor in interpreting mutaitonal signatures
+
+Goal: The goal of this work is to identify different clusters of assay signature types by performing clustering on base pair transition signatures.
+
+Assumptions: This works assumes that a large proportion of listed signatures are assay artifacts and that these background mutations drive clustering patterns. Other contributors could also influence the signature results include the diversity of cancer types tested and the segments of the genome tested by each panel.
+
+### Procedure
+
+1.  Filter to the GENIE variant set to SNV events only
+2.  Filter out any variants coming from assays that contribute fewer than 1,000 variants across all patients
+3.  Create a table that has a profile of variant counts for every combination of ref--\>alt for each assay
+4.  Calculate what percentage of variants for a given assay type fit into any given combination of \[ref base, tumor alt 2 base, strand\].
+5.  Pivot these data into a matrix where rows are the different base pair combinations and columns are the different assay types. Each entry contains the percentage of variants that match a given base pair transition (e.g. A--\>T) for that assay type.
+6.  Normalize the matrix
+7.  Perfrom tsNE clustering
+8.  Visualize clusters
+
+The following table shows the results of step (3):
+
+```{r}
+#| echo: false
+#| warning: false
+
+minAssayVarCnt <- 1000 # to be considered, each assay must have at least this many variants across all patients
+
+# create a table that has a profile of variant counts for every combination of ref-->alt for each assay
+assaySigTbl <- genie.full %>%
+  dplyr::filter(Variant_Type == "SNP") %>%
+  dplyr::group_by(SEQ_ASSAY_ID) %>%
+  dplyr::mutate(assayVariantsTotal=n()) %>%
+  dplyr::filter(assayVariantsTotal >= minAssayVarCnt) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(SEQ_ASSAY_ID,Reference_Allele,Tumor_Seq_Allele2,Strand,add=T) %>%
+  dplyr::summarise(nVariants=n(),
+                   assayVariantsTotal=dplyr::last(assayVariantsTotal),
+                   percVariants = nVariants / assayVariantsTotal * 100) 
+
+knitr::kable(head(assaySigTbl,10), )
+```
+
+```{r}
+#Convert data to matrix form
+assaySigTbl$ID <- paste0(assaySigTbl$Reference_Allele,"-",assaySigTbl$Tumor_Seq_Allele2,"-",assaySigTbl$Strand)
+sigMtrx <- assaySigTbl[,c("ID","SEQ_ASSAY_ID","percVariants")] %>%
+  tidyr::pivot_wider(names_from = SEQ_ASSAY_ID,values_from=percVariants)
+sigMtrx2 <- sigMtrx[,!colnames(sigMtrx) %in% c("ID")]
+```
+
+Perform dimentionality reduction on mutational signature vector space
+
+```{r}
+
+sigMtrxScale <- t(scale(sigMtrx2))
+
+# Run t-SNE
+set.seed(144) # For reproducibility
+tsne_results <- Rtsne(sigMtrxScale, perplexity = 5, theta = 0.5, max_iter = 1000)
+
+# Create a data frame for plotting
+tsne_data <- data.frame(X = tsne_results$Y[,1], Y = tsne_results$Y[,2], assay = colnames(sigMtrx2))
+
+# Plot using ggplot2
+ggplot(tsne_data, aes(x = X, y = Y, color = assay)) +
+  geom_point() +
+  theme_minimal() +
+  ggtitle("t-SNE Plot of Assay signatures")
+```
+
+```{r}
+### Why do the ref/alt calls not always match the bases listed in HGVSc?
+head(genie.full[,c("Reference_Allele","Tumor_Seq_Allele1","Tumor_Seq_Allele2","HGVSc")])
+```
+
+# Review of patient data
+
+```{r}
+
+## sumarize patient data if numeric
+numeric_summary <- patient.genie %>%
+  dplyr::select_if(is.numeric) %>%
+  #summarise_all(funs(mean, median, sd, min, max))
+  #dplyr::summarise_all(tibble::lst(mean,median,sd,min,max))
+  dplyr::summarise_all(list(mean = mean,
+                            median = median))
+
+categorical_summary <- patient.genie %>%
+  select_if(is.factor) %>%
+  dplyr::summarise_all(list(table = table,
+                            n = length))
+
+```
+
+```{r}
+ggpairs(patient.genie[,c("SEX","PRIMARY_RACE","DEAD")])
+```
+
+```{}
+```
+
+```{python}
+r=1
+print(r)
+```
+
+```{python}
+#patient_py = reticulate::r_to_py(patient.genie)
+#patient_py.head()
+```
+
+# Review of survival data
+
+```{r}
+table(as.numeric(patient.genie$YEAR_DEATH),exclude=NULL)
+```
+
+# Additional modeling ideas
+
+-   Does having an actionable mutation correlate with better or worse survival outcomes?
+
+-   Supervised
+
+    -   Tissue of origin prediction based on various biomarkers
+
+    -   Identifying mutational signatures that correlate with outcomes and/or cancer types
+
+    -   Mutational signatures that correlate with a given assay type
+
+-   Unsupervised modeling
+
+    -   Clustering of mutation patterns for each assay by tsne or PCA
