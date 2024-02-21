@@ -1,0 +1,264 @@
+---
+title: "AACR GENIE clinical and sample data summary report"
+date: 2024-01-29
+author:
+  - name: Larson Hogstrom
+    id: lh
+    email: larsonh@uio.no
+    affiliation: 
+      - name: Oslo Cancer Hospital
+        city: Oslo
+        url: https://www.ous-research.no/institute/
+format: pdf
+editor: visual
+---
+
+# Overview
+
+The goal of this document is to analyze patient and sample information from the AACR GENIE data set. A number of fields are available for each patient including high-level demographic information, academic center, contact date, and death status.
+
+## Loading data
+
+```{r}
+#| echo: false
+#| include: false
+library(dplyr)
+library(UpSetR)
+library(ggplot2)
+library(pheatmap)
+library(RColorBrewer)
+library(Rtsne)
+library(reticulate)
+library(GGally)
+```
+
+```{r}
+#| echo: false
+#| include: false
+
+# set python path 
+reticulate::use_condaenv(condaenv="/Users/larsonhogstrom/anaconda3/envs/balder_conda_env/")
+```
+
+```{r}
+bDir <- "../../data/processed/balderResultsDb"
+figDir <- "../../output/actionability_db_curration_20231220"
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+
+#genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GeniePatientVarients')
+sample.genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GenieClinicalSampleData')
+patient.genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GeniePatientData')
+```
+
+# Description of fields
+
+The following fields are contained in the patient data file:
+
+1.  **Patient Identifier (PATIENT_ID)**: A unique identifier for each patient, following the convention GENIE-CENTER-XXXX.
+
+2.  **Sex (SEX)**: The sex of the patient.
+
+3.  **Primary Race (PRIMARY_RACE)**: The primary race recorded for the patient.
+
+4.  **Ethnicity (ETHNICITY)**: The ethnicity of the patient, particularly indicating if they are Spanish/Hispanic or not.
+
+5.  **Center (CENTER)**: The center of sequencing.
+
+6.  **Interval in days from DOB to date of last contact (INT_CONTACT)**: The number of days from the patient's date of birth to their last contact date.
+
+7.  **Interval in days from DOB to date of death (INT_DOD)**: The number of days from the patient's date of birth to their date of death (if applicable).
+
+8.  **Year of last contact (YEAR_CONTACT)**: The year in which the patient was last known to be alive.
+
+9.  **Vital Status (DEAD)**: Indicates whether the patient is deceased.
+
+10. **Year of Death (YEAR_DEATH)**: The year in which the patient died (if applicable).
+
+# Exploratory data analysis
+
+Summary of columns and proportion of null entries
+
+```{r}
+#| echo: false
+#| include: true
+
+nullSumm <- data.frame()
+for (x in colnames(patient.genie)) {
+  xData <- patient.genie[,x]
+  isNull <- (is.na(xData) |
+             xData == "Not Collected" | 
+             xData == "Not Released" | 
+             xData == "Unknown")
+  nullSumm[x,"Count of null entries"] <- sum(isNull)
+  propNull <- sum(isNull) / dim(patient.genie)[[1]]
+  nullSumm[x,"Proportion of null"] <- paste0(100*round(propNull,4),"%")
+}
+knitr::kable(nullSumm, format="latex", align="l")
+```
+
+Print data from python
+
+```{r}
+patient_py = reticulate::r_to_py(patient.genie)
+```
+
+```{python}
+#| echo: false
+#| include: false
+
+#r.patient_py.head()
+```
+
+Summary of pandas fields
+
+```{python}
+#| echo: false
+#| include: false
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+### code from chat gpt
+
+# Load the dataset
+data = r.patient_py
+
+# Display basic information about the dataset
+data_info = data.info()
+
+# Summarize categorical data
+categorical_summary = data.describe(include=['object'])
+
+# Displaying the first few rows of the dataset for a quick overview
+first_rows = data.head()
+
+data_info
+```
+
+# Summary of categorical fields
+
+```{r}
+knitr::kable(py$categorical_summary,format="latex", align="l")
+```
+
+```{python}
+categorical_summary = data.describe(include=['object'])
+categorical_summary
+```
+
+# Plotting of categorical fields (from Chat GPT)
+
+```{python}
+#| echo: false
+
+# Setting the aesthetic style of the plots
+sns.set(style="whitegrid")
+
+# Creating a list of columns to visualize
+columns_to_visualize = ['SEX', 'PRIMARY_RACE', 'ETHNICITY', 'CENTER', 'DEAD']
+
+# Creating subplots for each categorical column
+fig, axes = plt.subplots(len(columns_to_visualize), 1, figsize=(10, 15))
+fig.tight_layout(pad=5.0)
+
+for i, col in enumerate(columns_to_visualize):
+    sns.countplot(y=col, data=data, ax=axes[i], order = data[col].value_counts().index)
+    axes[i].set_title(f'Distribution of {col}')
+    axes[i].set_xlabel('')
+    axes[i].set_ylabel('')
+
+plt.show()
+
+```
+
+# Review of survival data
+
+Count tble of year of patient death
+
+```{r}
+table(as.numeric(patient.genie$YEAR_DEATH),exclude=NULL)
+```
+
+## Plots of DOB, Year of last contact, and survival
+
+```{python}
+#| echo: false
+
+# Handling the 'INT_DOD' field: Converting 'Not Applicable' to NaN for numeric analysis
+data['INT_DOD_NUMERIC'] = pd.to_numeric(data['INT_DOD'], errors='coerce')
+
+# Summary statistics for 'INT_DOD_NUMERIC' and 'YEAR_CONTACT'
+int_dod_summary = data['INT_DOD_NUMERIC'].describe()
+year_contact_summary = data['YEAR_CONTACT'].astype('category').describe()
+
+# Count distribution for 'DEAD' and 'YEAR_DEATH'
+dead_count = data['DEAD'].value_counts()
+year_death_count = data['YEAR_DEATH'].value_counts()
+
+# Creating visualizations
+fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+
+# Histogram for 'INT_DOD_NUMERIC'
+sns.histplot(data['INT_DOD_NUMERIC'].dropna(), bins=30, ax=axes[0, 0], kde=True)
+axes[0, 0].set_title('Histogram of Days from DOB to DOD (Numeric Values Only)')
+axes[0, 0].set_xlabel('Days from DOB to DOD')
+axes[0, 0].set_ylabel('Frequency')
+
+# Bar plot for 'YEAR_CONTACT'
+sns.countplot(y=data['YEAR_CONTACT'], ax=axes[0, 1], order=data['YEAR_CONTACT'].value_counts().index)
+axes[0, 1].set_title('Bar Plot of Year of Last Contact')
+axes[0, 1].set_xlabel('Count')
+axes[0, 1].set_ylabel('Year of Last Contact')
+
+# Bar plot for 'DEAD'
+sns.barplot(x=dead_count.index, y=dead_count.values, ax=axes[1, 0])
+axes[1, 0].set_title('Bar Plot of Vital Status')
+axes[1, 0].set_xlabel('Vital Status')
+axes[1, 0].set_ylabel('Count')
+
+# Bar plot for 'YEAR_DEATH'
+sns.countplot(y=data['YEAR_DEATH'], ax=axes[1, 1], order=data['YEAR_DEATH'].value_counts().index)
+axes[1, 1].set_title('Bar Plot of Year of Death')
+axes[1, 1].set_xlabel('Count')
+axes[1, 1].set_ylabel('Year of Death')
+
+plt.tight_layout()
+plt.show()
+
+#int_dod_summary, year_contact_summary, dead_count, year_death_count
+
+
+```
+
+```{r}
+#dod_summ = reticulate::py_to_r(int_dod_summary)
+dod_summ = py$int_dod_summary
+knitr::kable(head(dod_summ,10), )
+```
+
+# Review of patient data pairwise
+
+```{r}
+#| echo: false
+
+## sumarize patient data if numeric
+numeric_summary <- patient.genie %>%
+  dplyr::select_if(is.numeric) %>%
+  #summarise_all(funs(mean, median, sd, min, max))
+  #dplyr::summarise_all(tibble::lst(mean,median,sd,min,max))
+  dplyr::summarise_all(list(mean = mean,
+                            median = median))
+
+categorical_summary <- patient.genie %>%
+  select_if(is.factor) %>%
+  dplyr::summarise_all(list(table = table,
+                            n = length))
+
+```
+
+```{r}
+ggpairs(patient.genie[,c("SEX","DEAD")]) #"PRIMARY_RACE",
+```
+
+# 

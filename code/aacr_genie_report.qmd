@@ -30,7 +30,7 @@ library(GGally)
 #| include: false
 
 # set python path 
-reticulate::use_condaenv(condaenv="/Users/larsonhogstrom/anaconda3/envs/onconpc_conda_env/")
+reticulate::use_condaenv(condaenv="/Users/larsonhogstrom/anaconda3/envs/balder_conda_env/")
 ```
 
 ```{r}
@@ -161,7 +161,7 @@ How many samples (or patients) have been tested with more than one panel?
 
 To-do: Is the coverage across panels? 10X-30X? Tumor and normal coverage?
 
-# Variant Effect and Protein annotation 
+# Variant Effect and Protein annotation
 
 Variant type
 
@@ -322,48 +322,6 @@ ggplot(tsne_data, aes(x = X, y = Y, color = assay)) +
 ```{r}
 ### Why do the ref/alt calls not always match the bases listed in HGVSc?
 head(genie.full[,c("Reference_Allele","Tumor_Seq_Allele1","Tumor_Seq_Allele2","HGVSc")])
-```
-
-# Review of patient data
-
-```{r}
-
-## sumarize patient data if numeric
-numeric_summary <- patient.genie %>%
-  dplyr::select_if(is.numeric) %>%
-  #summarise_all(funs(mean, median, sd, min, max))
-  #dplyr::summarise_all(tibble::lst(mean,median,sd,min,max))
-  dplyr::summarise_all(list(mean = mean,
-                            median = median))
-
-categorical_summary <- patient.genie %>%
-  select_if(is.factor) %>%
-  dplyr::summarise_all(list(table = table,
-                            n = length))
-
-```
-
-```{r}
-ggpairs(patient.genie[,c("SEX","PRIMARY_RACE","DEAD")])
-```
-
-```{}
-```
-
-```{python}
-r=1
-print(r)
-```
-
-```{python}
-#patient_py = reticulate::r_to_py(patient.genie)
-#patient_py.head()
-```
-
-# Review of survival data
-
-```{r}
-table(as.numeric(patient.genie$YEAR_DEATH),exclude=NULL)
 ```
 
 # Additional modeling ideas
