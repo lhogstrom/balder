@@ -14,21 +14,24 @@ library(RColorBrewer)
 
 figDir <- "/Users/larsonhogstrom/Documents/oncology_biomarkers/mutation_incidence_20220913"
 
-inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-VariantSummaries.tsv"
-# load and order by variant score
-df <- read.csv(inFile,sep="\t") %>%
-  dplyr::arrange(desc(civic_variant_evidence_score))
-
-inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-AssertionSummaries.tsv"
-assertions <- read.csv(inFile,sep="\t")
-
+### load clinical evidence entries
 inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
 clinical <- read.csv(inFile,sep="\t")
 clinical$chromosomeNum <- as.character(clinical$chromosome)
 clinical$chr <- paste0("chr",clinical$chromosomeNum)
 
-inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-VariantGroupSummaries.tsv"
-varGroups <- read.csv(inFile,sep="\t")
+### Paths to other CIViC data (not currently used)
+#inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-VariantSummaries.tsv"
+# load and order by variant score
+#df <- read.csv(inFile,sep="\t") %>%
+#  dplyr::arrange(desc(civic_variant_evidence_score))
+
+#inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-AssertionSummaries.tsv"
+#assertions <- read.csv(inFile,sep="\t")
+
+#inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/CIViC-01-Dec-2021-VariantGroupSummaries.tsv"
+#varGroups <- read.csv(inFile,sep="\t")
+
 
 # COMMAND ----------
 ### load MOAlmanac which is similar to CIViC

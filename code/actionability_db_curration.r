@@ -9,73 +9,28 @@ library(RSQLite)
 
 figDir <- "../../output/actionability_db_curration_20231220"
 
-inFile <- "../../data/CIViC/CIViC-01-Dec-2021-VariantSummaries.tsv"
-# load and order by variant score
-df <- read.csv(inFile,sep="\t") %>%
-  dplyr::arrange(desc(civic_variant_evidence_score))
-
-inFile <- "../../data/CIViC//CIViC-01-Dec-2021-AssertionSummaries.tsv"
-assertions <- read.csv(inFile,sep="\t")
-
+### load clinical evidence entries
 inFile <- "../../data/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
 clinical <- read.csv(inFile,sep="\t")
 clinical$chromosomeNum <- as.character(clinical$chromosome)
 clinical$chr <- paste0("chr",clinical$chromosomeNum)
 
-inFile <- "../../data/CIViC//CIViC-01-Dec-2021-VariantGroupSummaries.tsv"
-varGroups <- read.csv(inFile,sep="\t")
+### Paths to other CIViC data (not currently used)
+# inFile <- "../../data/CIViC/CIViC-01-Dec-2021-VariantSummaries.tsv"
+# varSummaries <- read.csv(inFile,sep="\t") %>%
+#   dplyr::arrange(desc(civic_variant_evidence_score)) # load and order by variant score
+# 
+# inFile <- "../../data/CIViC//CIViC-01-Dec-2021-AssertionSummaries.tsv"
+# assertions <- read.csv(inFile,sep="\t")
+# 
+# inFile <- "../../data/CIViC//CIViC-01-Dec-2021-VariantGroupSummaries.tsv"
+# varGroups <- read.csv(inFile,sep="\t")
 
 # COMMAND ----------
 ### load MOAlmanac which is similar to CIViC
 inFile <- "../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt"
 moa <- read.csv(inFile,sep="\t")
 
-print(table(moa$gene))
-print(table(moa$predictive_implication))
-print(table(moa$source_type))
-print(table(moa$feature_type))
-print(table(moa$variant_annotation))
-print(table(moa$cosmic_signature_number,exclude=NULL))
-
-signatures.moa <- moa[moa$feature_type=="Mutational signature",]
-
-### make plot of feature type 
-cnts.moa.type <- moa %>%
-  dplyr::group_by(feature_type) %>%
-  dplyr::summarise(n=dplyr::n()) %>%
-  dplyr::arrange(desc(n))
-cnts.moa.type$feature_type <- factor(cnts.moa.type$feature_type,levels=cnts.moa.type$feature_type)
-
-ggplot(cnts.moa.type,aes(x=feature_type,y=n))+
-  #geom_bar(stat_count="identity")+
-  geom_point(alpha=.8,color='darkblue')+
-  theme_bw()+
-  ylab("nuber of MOA entries")+
-  ggtitle(paste0("MOAlmanac aberrations by type"))+
-  theme(plot.title = element_text(hjust = 0.5))+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-### load MSK-IMPACT
-inFile <- "../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv"
-msk <- read.csv(inFile,sep="\t")
-#inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/msk_impact_data_clinical_sample2.txt"
-#patient.msk <- read.csv(inFile,sep="\t")
-inFile <- "../../data/MSK_IMPACT/msk_impact_2017/data_clinical_sample.txt"
-patient.msk <- read.csv(inFile,sep="\t",skip = 4)
-msk$Chromosome.str <- paste0("chr",msk$Chromosome)
-msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
-
-### Is there a primary and secondary alt listed? 
-#table(is.na(msk$n_alt_count),exclude=NULL)
-#table(msk$Reference_Allele == msk$Tumor_Seq_Allele1,exclude=NULL)
-
-# join clinical info onto variant info
-all(msk$Tumor_Sample_Barcode %in% patient.msk$SAMPLE_ID)
-
-msk <- msk %>% 
-  dplyr::left_join(patient.msk,by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
-
-# COMMAND ----------
 ### create actionability type assignemnts 
 ## MOA
 moa$actionability.summary <- "Other"
@@ -145,9 +100,7 @@ clinical$pos <- clinical$start
 clinical$ref <- clinical$reference_bases
 clinical$alt <- clinical$variant_bases
 
-### combine MOA and CIViC data
-
-### create cancer type maps CIVIC-->MSK and MOA-->MSK
+### which are the most common cancer types in msk, moa, and civic
 civic.cType.cnt <- clinical %>%
   dplyr::group_by(Disease) %>%
   dplyr::summarise(number.of.subjects=dplyr::n()) %>%
@@ -158,13 +111,23 @@ moa.cType.cnt <- moa %>%
   dplyr::summarise(number.of.subjects=dplyr::n()) %>%
   dplyr::arrange(desc(number.of.subjects))
 
-### which are the most common cancer types in msk, moa, and civic
+### Use MSK-IMPACT as cancer type anchor 
+
+inFile <- "../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv"
+msk <- read.csv(inFile,sep="\t")
+inFile <- "../../data/MSK_IMPACT/msk_impact_2017/data_clinical_sample.txt"
+patient.msk <- read.csv(inFile,sep="\t",skip = 4)
+msk <- msk %>% 
+  dplyr::left_join(patient.msk,by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
+
 msk.cType.cnt <- msk %>%
   dplyr::group_by(CANCER_TYPE) %>%
   dplyr::summarise(number.of.subjects=dplyr::n_distinct(PATIENT_ID)) %>%
   dplyr::arrange(desc(number.of.subjects))
 outF <-  paste0(figDir,"/msk_cancer_types.txt")
 write.table(msk.cType.cnt,outF,row.names=F,quote=F,sep="\t")
+
+### create cancer type maps CIVIC-->MSK and MOA-->MSK
 
 ## create draft cancer type maps
 iCMmatch <- civic.cType.cnt$Disease %in% msk.cType.cnt$CANCER_TYPE
@@ -203,7 +166,10 @@ table(moa$MskCancerType,exclude=NULL)
 # what fraction of entries are still missing MSK cancer type assignment
 print(sum(is.na(moa$MskCancerType))/dim(moa)[[1]])
 
-# now combine MOA and CIVIC
+#####################
+### MOA and CIVIC ###
+#####################
+
 matchCols <- c("source","gene","AAChange","Drugs","FDAApproved","ReferenceOrTrialID","EvidenceText","Phase",
                "Indicated","Disease","chr","pos","ref","alt","MskCancerType","actionability.summary","clinical.evidence.summary")
 dbRules <- rbind(moa[,matchCols],clinical[,matchCols]) %>%
@@ -212,7 +178,7 @@ dbRules <- rbind(moa[,matchCols],clinical[,matchCols]) %>%
 outF <-  paste0(figDir,"/civic_MOA_clinically_actionable_list.txt")
 write.table(dbRules,outF,row.names=F,quote=F,sep="\t")
 
-### summarize
+### group by genomic position and AA change
 dbGenome <- dbRules %>%
   dplyr::group_by(chr,pos,ref,alt) %>%
   dplyr::summarize(n.db.entries=dplyr::n(),
@@ -222,6 +188,7 @@ dbGenome <- dbGenome[!dbGenome$ref=="" & !dbGenome$alt=="",]
 outF <-  paste0(figDir,"/civic_MOA_clinically_actionable_genomic_pos.txt")
 write.table(dbGenome,outF,row.names=F,quote=F,sep="\t")
 
+## group by AA change
 dbAlteration <- dbRules %>%
   dplyr::group_by(gene,AAChange) %>%
   dplyr::summarize(n.db.entries=dplyr::n(),
@@ -239,12 +206,11 @@ excludeList <- c("Loss", "LOH", "LOSS", "ITD", "VIII", "BCR-ABL", "DELETION", "E
 iAACoord <- iAACoord & !(dbAlteration$AAChange %in% excludeList)
 dbProtein <- dbAlteration[iAACoord,]
 dbOtherAlt <- dbAlteration[!iAACoord,]
+dbAlteration$isHGVSpChange <- iAACoord
+
 # output non-match events
 outF <-  paste0(figDir,"/civic_MOA_non_AA_change_alterations.txt")
 write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
-
-table(dbProtein[,"source"]) # except 
-table(dbOtherAlt[,"source"])
 
 ########################
 ### write results db ###
@@ -255,10 +221,10 @@ mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.
 
 RSQLite::dbWriteTable(mydb, "MoaCiVICRuleEntries", dbRules)
 RSQLite::dbWriteTable(mydb, "actionableSNVsByGenomicCoordinate", dbGenome)
-#RSQLite::dbWriteTable(mydb, "actionableSNVsByAAChange", dbAlteration)
+RSQLite::dbWriteTable(mydb, "actionableSNVsByAAChange", dbAlteration)
 RSQLite::dbWriteTable(mydb, "MoaCiVICOtherAlterations", dbOtherAlt)
 
-RSQLite::dbDisconnect(mydb)
+#RSQLite::dbDisconnect(mydb)
 
 ########################################
 ### create connection to results db ###
@@ -275,33 +241,21 @@ hMeta <- read.csv(inFile,sep="\t")
 inFile <- paste0(baseDir,"/pre_biopsy_drugs.tsv")
 hTreatment <- read.csv(inFile,sep="\t")
 
-mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
-
+RSQLite::dbWriteTable(mydb, "hartwigSampleInfo", sampleList)
 RSQLite::dbWriteTable(mydb, "hartwigMetadata", hMeta)
 RSQLite::dbWriteTable(mydb, "hartwigPreBiopsyDrugs", hTreatment)
-#RSQLite::dbDisconnect(mydb)
 
-### 
-#inFile <- "/Users/larsonhogstrom/Documents/variant_annotation/impact_2017_annotated_per_variant.tsv"
-#msk <- read.csv(inFile,sep="\t")
+###  MSK-IMPACT
 inFile <- "../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt"
 patient.msk <- read.csv(inFile,sep="\t")
-
-#mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
-
 RSQLite::dbWriteTable(mydb, "mskMetadata", patient.msk)
 
 ### PANCAN
-
 inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt"
 pancanSampInfo <- read.csv(inFile,sep="\t",skip = 4)
-
-#mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
-
 RSQLite::dbWriteTable(mydb, "pancanMetadata", pancanSampInfo)
 
 ### AACR GENIE
-
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
 patient.genie <- read.csv(inFile,sep="\t",skip=4)
 # gpatientCols <- c("Patient.Identifier", 
@@ -321,11 +275,22 @@ sample.genie <- read.csv(inFile,sep="\t",skip=4)
 RSQLite::dbWriteTable(mydb, "GeniePatientData", patient.genie)
 RSQLite::dbWriteTable(mydb, "GenieClinicalSampleData", sample.genie)
 
-RSQLite::dbDisconnect(mydb)
+### MC3 TCGA
+# TCGA site codes
+inFile <- "../../data/curration/TCGA_tissue_source_site_codes.csv"
+tss <- read.csv(inFile,sep=",")
+RSQLite::dbWriteTable(mydb, "Mc3TCGASiteCodes", tss)
+# barcode naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
+# tissue site codes: https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/tissue-source-site-codes
+
 
 ###########################################
 ### short variants - SNV and indel data ###
 ###########################################
+
+# for each dataset: 
+#     1) write the full table (*PatientVarients)
+#     2) a subset of columns across all datasets (patientObservedVariantTable)
 
 ### pancan
 #inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_cna.txt"
@@ -336,75 +301,62 @@ RSQLite::dbDisconnect(mydb)
 #
 inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_mutations.txt"
 sv <- read.csv(inFile,sep="\t",skip = 2)
+RSQLite::dbWriteTable(mydb, "PancanPatientVarients", sv)
 
 #subset variant columns for variant table
 varTable <- sv[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
 colnames(varTable) <- c("chrom","pos","ref","alt","sample")
 varTable$SourceStudy <- "PANCAN-WGS-data"
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable)
 
-vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
-print(dim(vRes))
-RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable,append=T)
-vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
-print(dim(vRes))
+### MSK-IMPACT - see above for initial data loading
+msk$Chromosome.str <- paste0("chr",msk$Chromosome)
+msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
+RSQLite::dbWriteTable(mydb, "Msk2017PatientVarients", msk)
 
-### MSK-IMPACT
-inFile <- "../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv"
-msk <- read.csv(inFile,sep="\t")
+varTableMsk <- msk[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
+colnames(varTableMsk) <- c("chrom","pos","ref","alt","sample")
+varTableMsk$SourceStudy <- "MSK-IMPACT-2017-data"
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTableMsk,append=T)
 
 ### MC3 TCGA
 inFile <- "../../data/mc3_tcga/scratch.sample.mc3.maf"
 #inFile <- "../../data/mc3_tcga/mc3.v0.2.8.PUBLIC.maf"
-mc3 <- read.csv(inFile,sep="\t")
+mc3 <- read.csv(inFile,sep="\t") %>%
+  dplyr::rename(StrandPlusMinus=STRAND)
+RSQLite::dbWriteTable(mydb, "Mc3PatientVarients", mc3)
 
 ### consequence df
-selectColM3 <- c("Hugo_Symbol",
-                 "Variant_Classification",
-                 "Tumor_Sample_Barcode",
-                 "HGVSp_Short",
-                 "Transcript_ID")
-# barcode naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
-# tissue site codes: https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/tissue-source-site-codes
-conseq.mc3 <- mc3[,selectColM3]
-inFile <- "../../data/curration/TCGA_tissue_source_site_codes.csv"
-tss <- read.csv(inFile,sep=",")
+# selectColM3 <- c("Hugo_Symbol",
+#                  "Variant_Classification",
+#                  "Tumor_Sample_Barcode",
+#                  "HGVSp_Short",
+#                  "Transcript_ID")
+#conseq.mc3 <- mc3[,selectColM3]
+
+varTableMC3 <- mc3[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
+colnames(varTableMC3) <- c("chrom","pos","ref","alt","sample")
+varTableMC3$SourceStudy <- "TCGA-MC3-data"
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTableMC3,append=T)
+
+### to-do: check to see if previous MSK-IMPACT data set is a subset of the newest GENIE dataset
+### add label for assay used - what does each panel capture? 
 
 ### AACR GENIE
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_mutations_extended.txt"
 genie <- read.csv(inFile,sep="\t")
 RSQLite::dbWriteTable(mydb, "GeniePatientVarients", genie)
 
+varTableGenie <- genie[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
+colnames(varTableGenie) <- c("chrom","pos","ref","alt","sample")
+varTableGenie$SourceStudy <- "AACR-GENIE-data"
+RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTableGenie,append=T)
+# vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+# print(dim(vRes))
 
-#colnames(genie) %in% colnames(sv)
-#colnames(genie) %in% colnames(mc3)
-
-### Summary stats
-
-# join sample, patient info to variant info
-dim(genie)
-genie.full <- genie %>%
-  dplyr::left_join(sample.genie,by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>%
-  dplyr::left_join(patient.genie,by="PATIENT_ID")
-dim(genie.full)
-
-# what proportion of all patients are in the variant table?
-table(patient.genie$PATIENT_ID %in% genie.full$PATIENT_ID)
-
-
-
-### select the first variant for each patient arbitrarily. What assays was used? 
-panel.tmp <- genie.full %>%
-  dplyr::group_by(PATIENT_ID) %>%
-  dplyr::filter(dplyr::row_number()==1)
-table(panel.tmp$SEQ_ASSAY_ID)
-
-table(patient.genie$CENTER)
-
-
-### to-do: check to see if previous MSK-IMPACT data set is a subset of the newest GENIE dataset
-### add label for assay used - what does each panel capture? 
+### Disconnect from SQL db
+RSQLite::dbDisconnect(mydb)
 
 ########
-#outRFile <- paste0(figDir,"/cancerTypeMatching20231212.RData")
-#save.image(file = outRFile)
-
+outRFile <- paste0(figDir,"/actionDbCurration20240227.RData")
+save.image(file = outRFile)
