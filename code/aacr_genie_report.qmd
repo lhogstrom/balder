@@ -324,6 +324,29 @@ ggplot(tsne_data, aes(x = X, y = Y, color = assay)) +
 head(genie.full[,c("Reference_Allele","Tumor_Seq_Allele1","Tumor_Seq_Allele2","HGVSc")])
 ```
 
+# General summary code
+
+```{r}
+# join sample, patient info to variant info
+dim(genie)
+genie.full <- genie %>%
+  dplyr::left_join(sample.genie,by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>%
+  dplyr::left_join(patient.genie,by="PATIENT_ID")
+dim(genie.full)
+
+# what proportion of all patients are in the variant table?
+table(patient.genie$PATIENT_ID %in% genie.full$PATIENT_ID)
+
+### select the first variant for each patient arbitrarily. What assays was used? 
+panel.tmp <- genie.full %>%
+  dplyr::group_by(PATIENT_ID) %>%
+  dplyr::filter(dplyr::row_number()==1)
+table(panel.tmp$SEQ_ASSAY_ID)
+
+table(patient.genie$CENTER)
+
+```
+
 # Additional modeling ideas
 
 -   Does having an actionable mutation correlate with better or worse survival outcomes?
