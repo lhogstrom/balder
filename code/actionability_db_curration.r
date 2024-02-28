@@ -1,7 +1,5 @@
-#library(tidyverse)
 library(dplyr)
 library(tidyr)
-library(ggplot2)
 library(DBI)
 library(RSQLite)
 
@@ -224,11 +222,9 @@ RSQLite::dbWriteTable(mydb, "actionableSNVsByGenomicCoordinate", dbGenome)
 RSQLite::dbWriteTable(mydb, "actionableSNVsByAAChange", dbAlteration)
 RSQLite::dbWriteTable(mydb, "MoaCiVICOtherAlterations", dbOtherAlt)
 
-#RSQLite::dbDisconnect(mydb)
-
-########################################
-### create connection to results db ###
-########################################
+######################################################
+### patient and sample tables from various studies ###
+######################################################
 
 ### load hartwig data
 baseDir <- "../../data/Hartwig/data" 
@@ -245,19 +241,35 @@ RSQLite::dbWriteTable(mydb, "hartwigSampleInfo", sampleList)
 RSQLite::dbWriteTable(mydb, "hartwigMetadata", hMeta)
 RSQLite::dbWriteTable(mydb, "hartwigPreBiopsyDrugs", hTreatment)
 
+# sample columns needed: cancer type, met/primary
+hSampleSubset <- hMeta[,c("sampleId","primaryTumorLocation","primaryTumorType")]
+colnames(hSampleSubset) <- c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED")
+hSampleSubset$ONCOTREE_CODE <- NA # no code listed by authors
+hSampleSubset$SAMPLE_TYPE <- "Metastasis" # assume all samples are met from Hartwig
+RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", hTreatment,overwrite=T)
+
 ###  MSK-IMPACT
 inFile <- "../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt"
 patient.msk <- read.csv(inFile,sep="\t")
 RSQLite::dbWriteTable(mydb, "mskMetadata", patient.msk)
+
+mskSampleSubset <- patient.msk[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
+RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", mskSampleSubset,append=T)
 
 ### PANCAN
 inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt"
 pancanSampInfo <- read.csv(inFile,sep="\t",skip = 4)
 RSQLite::dbWriteTable(mydb, "pancanMetadata", pancanSampInfo)
 
+pancanSampleSubset <- pancanSampInfo[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
+RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", pancanSampleSubset,append=T)
+
 ### AACR GENIE
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
 patient.genie <- read.csv(inFile,sep="\t",skip=4)
+RSQLite::dbWriteTable(mydb, "GeniePatientData", patient.genie)
+
+### detailed column definitions for patient data
 # gpatientCols <- c("Patient.Identifier", 
 #                   "Sex", 
 #                   "Primary.Race", 
@@ -271,9 +283,12 @@ patient.genie <- read.csv(inFile,sep="\t",skip=4)
 
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt"
 sample.genie <- read.csv(inFile,sep="\t",skip=4)
-
-RSQLite::dbWriteTable(mydb, "GeniePatientData", patient.genie)
 RSQLite::dbWriteTable(mydb, "GenieClinicalSampleData", sample.genie)
+
+genieSampleSubset <- sample.genie[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
+RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", genieSampleSubset,append=T)
+
+# to-do: compile minimal patient columns across data sets: age, gender, race, ethnicity 
 
 ### MC3 TCGA
 # TCGA site codes
@@ -282,7 +297,6 @@ tss <- read.csv(inFile,sep=",")
 RSQLite::dbWriteTable(mydb, "Mc3TCGASiteCodes", tss)
 # barcode naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
 # tissue site codes: https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/tissue-source-site-codes
-
 
 ###########################################
 ### short variants - SNV and indel data ###
@@ -360,3 +374,9 @@ RSQLite::dbDisconnect(mydb)
 ########
 outRFile <- paste0(figDir,"/actionDbCurration20240227.RData")
 save.image(file = outRFile)
+
+### to-do
+# columns needed: Hugo_Symbol, AA change, cancer type
+# sample columns needed: cancer type, met/primary
+# patient columns needed: age, gender, race, ethnicity 
+
