@@ -215,12 +215,19 @@ write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
 ########################
 
 bDir <- "../../data/processed/balderResultsDb"
-mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+timestamp <- format(Sys.time(), "%Y%m%d")
 
-RSQLite::dbWriteTable(mydb, "MoaCiVICRuleEntries", dbRules)
-RSQLite::dbWriteTable(mydb, "actionableSNVsByGenomicCoordinate", dbGenome)
-RSQLite::dbWriteTable(mydb, "actionableSNVsByAAChange", dbAlteration)
-RSQLite::dbWriteTable(mydb, "MoaCiVICOtherAlterations", dbOtherAlt)
+# output db for harmonized data
+outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
+harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName)
+# output db for compiled raw data
+outDbName2 <- paste0(bDir,"/balder-compiled-raw-data-v",timestamp,".sqlite")
+rawDataDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName2)
+
+RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICRuleEntries", dbRules)
+RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByGenomicCoordinate", dbGenome)
+RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByAAChange", dbAlteration)
+RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICOtherAlterations", dbOtherAlt)
 
 ######################################################
 ### patient and sample tables from various studies ###
@@ -237,9 +244,9 @@ hMeta <- read.csv(inFile,sep="\t")
 inFile <- paste0(baseDir,"/pre_biopsy_drugs.tsv")
 hTreatment <- read.csv(inFile,sep="\t")
 
-RSQLite::dbWriteTable(mydb, "hartwigSampleInfo", sampleList)
-RSQLite::dbWriteTable(mydb, "hartwigMetadata", hMeta)
-RSQLite::dbWriteTable(mydb, "hartwigPreBiopsyDrugs", hTreatment)
+RSQLite::dbWriteTable(rawDataDb, "hartwigSampleInfo", sampleList)
+RSQLite::dbWriteTable(rawDataDb, "hartwigMetadata", hMeta)
+RSQLite::dbWriteTable(rawDataDb, "hartwigPreBiopsyDrugs", hTreatment)
 
 # sample columns needed: cancer type, met/primary
 hSampleSubset <- hMeta[,c("sampleId","primaryTumorLocation","primaryTumorType")]
@@ -247,30 +254,30 @@ colnames(hSampleSubset) <- c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED")
 hSampleSubset$ONCOTREE_CODE <- NA # no code listed by authors
 hSampleSubset$SAMPLE_TYPE <- "Metastasis" # assume all samples are met from Hartwig
 hSampleSubset$SourceStudy <- "Hartwig-data"
-RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", hSampleSubset,overwrite=T)
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", hSampleSubset,overwrite=T)
 
 ###  MSK-IMPACT
 inFile <- "../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt"
 patient.msk <- read.csv(inFile,sep="\t")
-RSQLite::dbWriteTable(mydb, "mskMetadata", patient.msk)
+RSQLite::dbWriteTable(rawDataDb, "mskMetadata", patient.msk)
 
 mskSampleSubset <- patient.msk[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
 mskSampleSubset$SourceStudy <- "MSK-IMPACT-2017-data"
-RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", mskSampleSubset,append=T)
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", mskSampleSubset,append=T)
 
 ### PANCAN
 inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt"
 pancanSampInfo <- read.csv(inFile,sep="\t",skip = 4)
-RSQLite::dbWriteTable(mydb, "pancanMetadata", pancanSampInfo)
+RSQLite::dbWriteTable(rawDataDb, "pancanMetadata", pancanSampInfo)
 
 pancanSampleSubset <- pancanSampInfo[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
 pancanSampleSubset$SourceStudy <- "PANCAN-WGS-data"
-RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", pancanSampleSubset,append=T)
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", pancanSampleSubset,append=T)
 
 ### AACR GENIE
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
 patient.genie <- read.csv(inFile,sep="\t",skip=4)
-RSQLite::dbWriteTable(mydb, "GeniePatientData", patient.genie)
+RSQLite::dbWriteTable(rawDataDb, "GeniePatientData", patient.genie)
 
 ### detailed column definitions for patient data
 # gpatientCols <- c("Patient.Identifier", 
@@ -286,11 +293,11 @@ RSQLite::dbWriteTable(mydb, "GeniePatientData", patient.genie)
 
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt"
 sample.genie <- read.csv(inFile,sep="\t",skip=4)
-RSQLite::dbWriteTable(mydb, "GenieClinicalSampleData", sample.genie)
+RSQLite::dbWriteTable(rawDataDb, "GenieClinicalSampleData", sample.genie)
 
 genieSampleSubset <- sample.genie[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
 genieSampleSubset$SourceStudy <- "AACR-GENIE-data"
-RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", genieSampleSubset,append=T)
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", genieSampleSubset,append=T)
 
 # to-do: compile minimal patient columns across data sets: age, gender, race, ethnicity 
 
@@ -298,12 +305,12 @@ RSQLite::dbWriteTable(mydb, "harmonizedSampleInfo", genieSampleSubset,append=T)
 # TCGA site codes
 inFile <- "../../data/curration/TCGA_tissue_source_site_codes.csv"
 tss <- read.csv(inFile,sep=",")
-RSQLite::dbWriteTable(mydb, "Mc3TCGASiteCodes", tss)
+RSQLite::dbWriteTable(harmonizedDb, "Mc3TCGASiteCodes", tss)
 # barcode naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
 # tissue site codes: https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/tissue-source-site-codes
 
 ## Review harmonized output
-#sRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM harmonizedSampleInfo')
+#sRes <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM harmonizedSampleInfo')
 #print(dim(sRes))
 
 ###########################################
@@ -323,30 +330,30 @@ RSQLite::dbWriteTable(mydb, "Mc3TCGASiteCodes", tss)
 #
 inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_mutations.txt"
 svPancan <- read.csv(inFile,sep="\t",skip = 2)
-RSQLite::dbWriteTable(mydb, "PancanPatientVarients", svPancan)
+RSQLite::dbWriteTable(harmonizedDb, "PancanPatientVarients", svPancan)
 
 #subset variant columns for variant table
 varTable <- svPancan[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
 colnames(varTable) <- c("chrom","pos","ref","alt","sample")
 varTable$SourceStudy <- "PANCAN-WGS-data"
-RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTable)
+RSQLite::dbWriteTable(harmonizedDb, "patientObservedVariantTable", varTable)
 
 ### MSK-IMPACT - see above for initial data loading
 msk$Chromosome.str <- paste0("chr",msk$Chromosome)
 msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
-RSQLite::dbWriteTable(mydb, "Msk2017PatientVarients", msk)
+RSQLite::dbWriteTable(harmonizedDb, "Msk2017PatientVarients", msk)
 
 varTableMsk <- msk[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
 colnames(varTableMsk) <- c("chrom","pos","ref","alt","sample")
 varTableMsk$SourceStudy <- "MSK-IMPACT-2017-data"
-RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTableMsk,append=T)
+RSQLite::dbWriteTable(harmonizedDb, "patientObservedVariantTable", varTableMsk,append=T)
 
 ### MC3 TCGA
 inFile <- "../../data/mc3_tcga/scratch.sample.mc3.maf"
 #inFile <- "../../data/mc3_tcga/mc3.v0.2.8.PUBLIC.maf"
 mc3 <- read.csv(inFile,sep="\t") %>%
   dplyr::rename(StrandPlusMinus=STRAND)
-RSQLite::dbWriteTable(mydb, "Mc3PatientVarients", mc3)
+RSQLite::dbWriteTable(harmonizedDb, "Mc3PatientVarients", mc3)
 
 ### consequence df
 # selectColM3 <- c("Hugo_Symbol",
@@ -359,7 +366,7 @@ RSQLite::dbWriteTable(mydb, "Mc3PatientVarients", mc3)
 varTableMC3 <- mc3[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
 colnames(varTableMC3) <- c("chrom","pos","ref","alt","sample")
 varTableMC3$SourceStudy <- "TCGA-MC3-data"
-RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTableMC3,append=T)
+RSQLite::dbWriteTable(harmonizedDb, "patientObservedVariantTable", varTableMC3,append=T)
 
 ### to-do: check to see if previous MSK-IMPACT data set is a subset of the newest GENIE dataset
 ### add label for assay used - what does each panel capture? 
@@ -367,17 +374,17 @@ RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTableMC3,append=T)
 ### AACR GENIE
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_mutations_extended.txt"
 genie <- read.csv(inFile,sep="\t")
-RSQLite::dbWriteTable(mydb, "GeniePatientVarients", genie)
+RSQLite::dbWriteTable(harmonizedDb, "GeniePatientVarients", genie)
 
 varTableGenie <- genie[,c("Chromosome","Start_Position","Reference_Allele","Tumor_Seq_Allele2","Tumor_Sample_Barcode")]
 colnames(varTableGenie) <- c("chrom","pos","ref","alt","sample")
 varTableGenie$SourceStudy <- "AACR-GENIE-data"
-RSQLite::dbWriteTable(mydb, "patientObservedVariantTable", varTableGenie,append=T)
-# vRes <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM patientObservedVariantTable')
+RSQLite::dbWriteTable(harmonizedDb, "patientObservedVariantTable", varTableGenie,append=T)
+# vRes <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVariantTable')
 # print(dim(vRes))
 
 ### Disconnect from SQL db
-RSQLite::dbDisconnect(mydb)
+RSQLite::dbDisconnect(harmonizedDb)
 
 ########
 outRFile <- paste0(figDir,"/actionDbCurration20240227.RData")
