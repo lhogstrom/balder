@@ -233,5 +233,5 @@ RSQLite::dbDisconnect(harmonizedDb)
 #RSQLite::dbDisconnect(rawDataDb)
 
 ########
-outRFile <- paste0(outDir,"/actionDbCurration",timestamp,".RData")
+outRFile <- paste0(outDir,"/actionDbCurration-",timestamp,".RData")
 save.image(file = outRFile)
