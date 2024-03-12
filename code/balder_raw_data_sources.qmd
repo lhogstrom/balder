@@ -60,7 +60,7 @@ The data were downloaded as "Release v14.1 Public" from the Synapse website here
 
 <https://www.synapse.org/#!Synapse:syn7222066/files/>
 
-## Hartwig 
+## Hartwig
 
 Whole-genomie sequencing data for over 2,500 patients is described in the paper by Priestley, et. al, 2019 (https://doi.org/10.1038/s41586-019-1689-y). Access to these data requires an application with the Hartwig Medical Foundation:
 
