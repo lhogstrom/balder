@@ -2,6 +2,7 @@ library(dplyr)
 library(tidyr)
 library(DBI)
 library(RSQLite)
+library(phenOncoX)
 
 outDir <- "../../output/actionability_db_curration_20231220"
 
@@ -62,7 +63,51 @@ clinical$clinical.evidence.summary <- "Lower Confidence"
 clinical[clinical$evidence_level == "A" | clinical$evidence_level == "B","clinical.evidence.summary"] <- "High Confidence"
 table(clinical$clinical.evidence.summary)
 
-# COMMAND ----------
+##############################################################
+### perform Disease Ontology to Oncotree mapping for CIViC ###
+##############################################################
+
+### load phenOncoX
+download_dir <- tempdir()
+oncoterms <- phenOncoX::get_terms(
+  cache_dir = download_dir)
+
+# select first unique entry with valid DO ID and OncoTree code
+nonNullDoEntried <- oncoterms$records[!is.na(oncoterms$records$do_id) & !is.na(oncoterms$records$ot_code),] %>%
+  dplyr::group_by(do_id) %>%
+  dplyr::filter(dplyr::row_number()==1)
+nonNullDoEntried$do_id_num <- as.numeric(sapply(strsplit(nonNullDoEntried$do_id, ":"), "[[", 2))
+
+# which entries do not have a DO match in phenOncoX? 
+#table(clinical$doid %in% nonNullDoEntried$do_id_num)
+#clinical[!clinical$doid %in% nonNullDoEntried$do_id_num,]
+
+### alterinative mapping tests
+# nnOT <- oncoterms$records[!is.na(oncoterms$records$do_id),]
+# nnOT$do_id_num <- as.numeric(sapply(strsplit(nnOT$do_id, ":"), "[[", 2))
+# nnOT[nnOT$do_id_num==9256,]
+# nnOT[nnOT$do_id_num==1324,]
+# nnOT[nnOT$do_id_num==1612,]
+# nnOT[nnOT$ot_name=="Lung" & !is.na(nnOT$ot_name),]
+# nnOT[grepl("Colo",nnOT$ot_name) & !is.na(nnOT$ot_name),]
+# nnOT[grepl("east",nnOT$ot_name) & !is.na(nnOT$ot_name),]
+
+mapDf <- nonNullDoEntried[,c("ot_name","ot_code","do_id_num")]
+# apply manual mapping for a few entries
+mapDf <- rbind(mapDf,c("Breast","BRCA",1612))
+mapDf <- rbind(mapDf,c("Colon/Rectum","BOWEL",9256))
+mapDf <- rbind(mapDf,c("Lung","LUNG",1324))
+mapDf$do_id_num <- as.numeric(mapDf$do_id_num)
+
+clinicalTree <- clinical %>%
+  dplyr::left_join(mapDf,
+                   by=c("doid"="do_id_num"))
+
+# check results of the join
+table(is.na(clinicalTree$ot_code))
+head(clinicalTree[,c("disease","doid","ot_name","ot_code")])
+clinicalTree[is.na(clinicalTree$ot_code),c("disease","doid","ot_name","ot_code")]
+
 ### add matching columns
 moa$source <- "MOAlmanac"
 moa$FDAApproved <- NA
@@ -95,6 +140,8 @@ clinical$AAChange <- clinical$variant
 clinical$pos <- clinical$start
 clinical$ref <- clinical$reference_bases
 clinical$alt <- clinical$variant_bases
+clinical$oncotree_term <- clinicalTree$ot_name
+clinical$oncotree_code <- clinicalTree$ot_code
 
 ### which are the most common cancer types in msk, moa, and civic
 civic.cType.cnt <- clinical %>%
@@ -167,7 +214,8 @@ print(sum(is.na(moa$MskCancerType))/dim(moa)[[1]])
 #####################
 
 matchCols <- c("source","gene","AAChange","Drugs","FDAApproved","ReferenceOrTrialID","EvidenceText","Phase",
-               "Indicated","Disease","chromosome","pos","ref","alt","MskCancerType","actionability.summary","clinical.evidence.summary")
+               "Indicated","Disease", "oncotree_term", "oncotree_code",
+               "chromosome","pos","ref","alt","MskCancerType","actionability.summary","clinical.evidence.summary")
 dbRules <- rbind(moa[,matchCols],clinical[,matchCols]) %>%
   dplyr::mutate(EvidenceText=gsub("\t","-",EvidenceText)) %>%
   dplyr::mutate(ReferenceOrTrialID=gsub("\t","-",ReferenceOrTrialID))
