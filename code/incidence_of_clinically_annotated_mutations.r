@@ -17,19 +17,32 @@ dbGenome <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM actionableSNVsByGen
 
 # load patient observed variants
 poVariants<- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVariantTable') %>%
-  dplyr::mutate(AAChangeObserved=stringr::str_replace(HGVSp_Short,"p.", ""))
+  dplyr::mutate(AAChangeObserved=stringr::str_replace(HGVSp_Short,"p.", ""),
+                MAF=100*(t_alt_count / (t_ref_count+t_alt_count)))
 poVariants$balderVariantID <- seq(1,dim(poVariants)[[1]])
 print(dim(poVariants))
 
 # load sample info for observed variants
 sampleInfoCompiled <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM harmonizedSampleInfo')
+sampleInfoCompiled[is.na(sampleInfoCompiled$SAMPLE_TYPE),"sampleInfoCompiled"] <- "Unspecified"
 print(dim(sampleInfoCompiled))
 RSQLite::dbDisconnect(harmonizedDb)
 
 ### join sample info to variant data
 svCompiled <- poVariants %>%
-  dplyr::left_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
+  dplyr::inner_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
                    by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
+
+  #dplyr::left_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
+  #                 by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
+print(dim(svCompiled))
+table(svCompiled$SAMPLE_TYPE,exclude=NULL)
+
+svCompiled_inner <- poVariants %>%
+  dplyr::inner_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
+                   by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
+print(dim(svCompiled_inner))
+table(svCompiled_inner$SAMPLE_TYPE,exclude=NULL)
 
 
 # Computing actionable variant counts for different match approaches
@@ -300,4 +313,142 @@ write.csv(cTypeSummary,"../../output/actionability_db_curration_20231220/test_ca
 # - proportion with cancer type match
 # - prop with high-confidence match
 # - prop with action type: therapy, prognostic, resistance, or other
+
+### Examine MAF distributions
+outDir <- "../../output/actionability_db_curration_20231220"
+outF <-  paste0(outDir,"/MAF_distribution_clinically_actionable.pdf")
+ggplot(aa.genome.representative,aes(x=MAF,fill=actionability.summary))+
+  geom_histogram(alpha=.4)+
+  theme_bw()+
+  facet_grid(SourceStudy~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n in source studies"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 10,width = 10)
+
+
+outF <-  paste0(outDir,"/MAF_distribution_clinically_actionable_type.pdf")
+ggplot(aa.genome.representative,aes(x=MAF,fill=actionability.summary))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  facet_grid(SourceStudy~.,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n by type"))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 10,width = 10)
+
+
+isMetPrim <- aa.genome.representative$SAMPLE_TYPE %in% c("Metastasis","Primary")
+isMC3 <- aa.genome.representative$SourceStudy == "TCGA-MC3-data"
+met.or.primary <- aa.genome.representative[isMetPrim & !isMC3,]
+outF <-  paste0(outDir,"/MAF_distribution_clinically_actionable_type_primary_met.pdf")
+ggplot(met.or.primary,aes(x=MAF,fill=actionability.summary))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  #facet_grid(SourceStudy~SAMPLE_TYPE,scale="free_y",)+
+  facet_grid(SAMPLE_TYPE~SourceStudy,scale="free_y",)+
+  xlab("MAF (%)")+
+  ggtitle(paste0("MAF of clinically actioanable variants \n by type"))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 10,width = 10)
+
+
+
+### create comparisons of distribution types
+testResDf <- data.frame()
+
+srcStudies <- unique(aa.genome.representative$SourceStudy)
+#sampleTypes <- unique(aa.genome.representative$SAMPLE_TYPE)
+sampleTypes <- c("Metastasis","Primary")
+actionSummTypes <- unique(aa.genome.representative$actionability.summary)
+for (testSource in srcStudies) {
+  ixSrc <- aa.genome.representative$SourceStudy == testSource
+  for (xMetPrim in sampleTypes) {
+    ixMetPrim <- aa.genome.representative$SAMPLE_TYPE == xMetPrim
+      for (xAS in actionSummTypes) {
+        for (yAS in actionSummTypes) {
+          
+          if (xAS == yAS) {
+            next
+          }
+          
+          # conditions of test
+          ixActionSumm <- aa.genome.representative$actionability.summary == xAS
+          iyActionSumm <- aa.genome.representative$actionability.summary == yAS
+          
+          xVarSubset <- aa.genome.representative[ixSrc & ixMetPrim & ixActionSumm,]
+          yVarSubset <- aa.genome.representative[ixSrc & ixMetPrim & iyActionSumm,]
+          print(dim(xVarSubset))
+          print(dim(yVarSubset))
+          
+          xSize <- dim(xVarSubset)[[1]]
+          ySize <- dim(yVarSubset)[[1]]
+          
+          # skip statsitical test if there are fewer than N exemplars in a given group
+          if ((xSize < 100) | (ySize < 100)) {
+            next
+          }
+          
+          xMAFVec <- xVarSubset$MAF
+          yMAFVec <- yVarSubset$MAF
+         
+          #mafDf <- data.frame(value=c(xMAFVec,yMAFVec),
+          #                    condition="c1")
+          #iC2 <- seq((length(xMAFVec)+1),dim(mafDf)[[1]])
+          #mafDf[iC2,"condition"] <- "c2"
+          #mafDf$condition <- factor(mafDf$condition)
+          
+          ixNa <- is.na(xMAFVec)
+          iyNa <- is.na(yMAFVec)
+          ixInf <- is.infinite(xMAFVec)
+          iyInf <- is.infinite(yMAFVec)
+          
+          wrs.twosided <- wilcox.test(xMAFVec[!ixNa & !ixInf],
+                                      yMAFVec[!iyNa & !iyInf],
+                                      alternative = "two.sided",
+                                      exact=FALSE,
+                                      conf.int=TRUE,
+                                      paired=FALSE)
+          
+          ## create outputs
+          c1_temp_summary <- summary(xMAFVec)
+          c2_temp_summary <- summary(yMAFVec)
+          
+          # Create a row to append to the dataframe
+          new_row <- data.frame(
+            # condition info
+            source_study = xSource,
+            SampleType = xMetPrim,
+            c1_actionability_summary = xAS,
+            c2_actionability_summary = yAS,
+            c1_variant_count = xSize,
+            c2_variant_count = ySize,
+            # summary stats condition 1
+            c1_min = c1_temp_summary[[1]],
+            c1_first_quartile = c1_temp_summary[[2]],
+            c1_median = c1_temp_summary[[3]],
+            c1_mean = c1_temp_summary[[4]],
+            c1_third_quartile = c1_temp_summary[[5]],
+            c1_max = c1_temp_summary[[6]],
+            # summary stats condition 2
+            c2_min = c2_temp_summary[[1]],
+            c2_first_quartile = c2_temp_summary[[2]],
+            c2_median = c2_temp_summary[[3]],
+            c2_mean = c2_temp_summary[[4]],
+            c2_third_quartile = c2_temp_summary[[5]],
+            c2_max = c2_temp_summary[[6]],
+            # wilcox results
+            wilcox_p_value = wrs.twosided$p.value,
+            wilcox_statistic = wrs.twosided$statistic[[1]],
+            wilcox_estimate = wrs.twosided$estimate[[1]]
+          )
+          
+          # Append the new row to the summary dataframe
+          testResDf <- rbind(testResDf, new_row)
+          
+      }
+    }
+  }
+}
 
