@@ -67,6 +67,49 @@ table(clinical$clinical.evidence.summary)
 ### perform Disease Ontology to Oncotree mapping for CIViC ###
 ##############################################################
 
+
+# load OT code hierarchy  
+library(purrr)
+inFile <- "../../data/oncotree/tumor_types_2021.txt"
+ot_code_full <- read.csv(inFile,sep="\t") %>%
+  separate(level_1, into = c("level_1_disease", "ot_code_level_1"), sep = " \\(", remove = FALSE) %>%
+  separate(level_2, into = c("level_2_disease", "ot_code_level_2"), sep = " \\(", remove = FALSE) %>%
+  separate(level_3, into = c("level_3_disease", "ot_code_level_3"), sep = " \\(", remove = FALSE) %>%
+  separate(level_4, into = c("level_4_disease", "ot_code_level_4"), sep = " \\(", remove = FALSE) %>%
+  separate(level_5, into = c("level_5_disease", "ot_code_level_5"), sep = " \\(", remove = FALSE) %>%
+  separate(level_6, into = c("level_6_disease", "ot_code_level_6"), sep = " \\(", remove = FALSE) %>%
+  mutate(ot_code_level_1 = gsub("\\)", "", ot_code_level_1),
+         ot_code_level_2 = gsub("\\)", "", ot_code_level_2),
+         ot_code_level_3 = gsub("\\)", "", ot_code_level_3),
+         ot_code_level_4 = gsub("\\)", "", ot_code_level_4),
+         ot_code_level_5 = gsub("\\)", "", ot_code_level_5),
+         ot_code_level_6 = gsub("\\)", "", ot_code_level_6)) %>%
+  mutate(Highest_Non_Null_Level = pmap_chr(select(., starts_with("ot_code_level_")), function(...) {
+    # Extract the column names of non-NA values for the current row
+    non_na_levels <- names(which(!is.na(c(...))))
+    # If there are non-NA levels, return the highest; otherwise, return NA or a placeholder
+    if(length(non_na_levels) > 0) {
+      last(non_na_levels)
+    } else {
+      NA_character_
+    }
+  }))
+
+# loop to get highest OT code and name
+for (i in rownames(ot_code_full)) {
+  lvl <- ot_code_full[i,"Highest_Non_Null_Level"]
+  codeSelect <- ot_code_full[i,lvl]
+  numLev <- strsplit(lvl, "_level_")[[1]][2]
+  ot_code_full[i,"oncotree_level"] <- as.numeric(numLev)
+  ot_code_full[i,"ot_code"] <- codeSelect
+  nameCol <- paste0("level_",numLev,"_disease")
+  ot_code_full[i,"ot_name"] <- ot_code_full[i,nameCol]
+  print(codeSelect)
+}
+
+outF <-  paste0(outDir,"/ot_code_map.txt")
+write.table(ot_code_full,outF,row.names=F,quote=F,sep="\t")
+
 ### load phenOncoX
 download_dir <- tempdir()
 oncoterms <- phenOncoX::get_terms(
@@ -275,6 +318,7 @@ RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICRuleEntries", dbRules)
 RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByGenomicCoordinate", dbGenome)
 RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByAAChange", dbAlteration)
 RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICOtherAlterations", dbOtherAlt)
+RSQLite::dbWriteTable(harmonizedDb, "OncoTreeCodeHierarchy", ot_code_full)
 
 ### Disconnect from SQL db
 RSQLite::dbDisconnect(harmonizedDb)
