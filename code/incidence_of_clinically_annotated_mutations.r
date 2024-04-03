@@ -11,7 +11,10 @@ dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240311.sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
 
 # load clinical annotations
-dbRules <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM MoaCiVICRuleEntries')
+dbRules <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM MoaCiVICRuleEntries') %>%
+  dplyr::rename(oncotree_code_annotation=oncotree_code,
+                oncotree_term_annotation=oncotree_term,
+                chromosome_annotation=chromosome)
 dbRules$balderRuleID <- seq(1,dim(dbRules)[[1]])
 dbRules$matchFlag <- "Y"
 dbAlterations <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM actionableSNVsByAAChange')
@@ -29,8 +32,6 @@ print(dim(poVariants))
 sampleInfoCompiled <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM harmonizedSampleInfo')
 sampleInfoCompiled[is.na(sampleInfoCompiled$SAMPLE_TYPE),"sampleInfoCompiled"] <- "Unspecified"
 print(dim(sampleInfoCompiled))
-RSQLite::dbDisconnect(harmonizedDb)
-
 
 otCodeCols <- c("ot_code", "ot_name", "Highest_Non_Null_Level", "oncotree_level",
                 "level_1_disease", "ot_code_level_1",
@@ -43,110 +44,10 @@ otCodeCols <- c("ot_code", "ot_name", "Highest_Non_Null_Level", "oncotree_level"
 ### join sample info to variant data
 svCompiled <- poVariants %>%
   dplyr::inner_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
-                   by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) #%>%
-  #dplyr::left_join(ot_code_full[,otCodeCols],by=c("oncotree_code"="ot_code")) # join ot_codes to annotation entry
-  #dplyr::left_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
-  #                 by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
+                   by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>% # exclude samples that do not have any sample information
+  dplyr::left_join(ot_code_full[,otCodeCols],by=c("ONCOTREE_CODE"="ot_code")) # join ot_codes to annotation
 print(dim(svCompiled))
 table(svCompiled$SAMPLE_TYPE,exclude=NULL)
-
-
-# Computing actionable variant counts for different match approaches
-# 
-# Different actionablity matching approaches were computed:
-#   
-# Unrestricted where no cancer type matching was imposed
-# 
-# Restricted with raw cancer type string matching
-
-dbRules <- dbRules %>%
-  dplyr::left_join(ot_code_full[,otCodeCols],by=c("oncotree_code"="ot_code")) # join ot_codes to annotation entry
-
-###
-### join with observed variant table with clinically annotated - by genome position
-genome.matched.unrestricted <- svCompiled %>%
-  dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome",
-                                 "Start_Position"="pos",
-                                 "Reference_Allele"="ref",
-                                 "Tumor_Seq_Allele2"="alt")) %>%
-  dplyr::group_by(Chromosome,Start_Position,Tumor_Seq_Allele2) %>%
-  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
-                   source=paste0(unique(source),collapse=";"),
-                   Drugs=paste0(unique(Drugs),collapse=";"),
-                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
-  dplyr::arrange(desc(n.patients.mutated))
-print(dim(genome.matched.unrestricted))
-print(table(genome.matched.unrestricted$source,exclude = NULL))
-
-### Unristricted match events - AA Change
-aa.matched.unrestricted <- svCompiled %>%
-  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
-                                      "AAChangeObserved"="AAChange")) %>%
-  dplyr::group_by(Hugo_Symbol,AAChangeObserved) %>%
-  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
-                   source=paste0(unique(source),collapse=";"),
-                   Drugs=paste0(unique(Drugs),collapse=";"),
-                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
-  dplyr::arrange(desc(n.patients.mutated))
-print(dim(aa.matched.unrestricted))
-print(table(aa.matched.unrestricted$source,exclude = NULL))
-
-### impose cancer type matches (genome) - oncotree
-genome.matched.ot.restricted <- svCompiled %>%
-  dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome",
-                                 "Start_Position"="pos",
-                                 "Reference_Allele"="ref",
-                                 "Tumor_Seq_Allele2"="alt",
-                                 "ONCOTREE_CODE"="oncotree_code")) %>%
-  dplyr::group_by(Chromosome,Start_Position,Tumor_Seq_Allele2,ONCOTREE_CODE) %>%
-  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
-                   disease=paste0(unique(Disease),collapse=";"),
-                   source=paste0(unique(source),collapse=";"),
-                   Drugs=paste0(unique(Drugs),collapse=";"),
-                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
-  dplyr::arrange(desc(n.patients.mutated))
-print(dim(genome.matched.unrestricted))
-print(table(genome.matched.unrestricted$source,exclude = NULL))
-
-### impose cancer type matches (protein) - oncotree
-aa.matched.ot.restricted <- svCompiled %>%
-  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
-                                 "AAChangeObserved"="AAChange",
-                                 "ONCOTREE_CODE"="oncotree_code")) %>%
-  dplyr::group_by(Hugo_Symbol,AAChangeObserved,ONCOTREE_CODE) %>%
-  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
-                   disease=paste0(unique(Disease),collapse=";"),
-                   source=paste0(unique(source),collapse=";"),
-                   Drugs=paste0(unique(Drugs),collapse=";"),
-                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
-  dplyr::arrange(desc(n.patients.mutated))
-print(dim(aa.matched.unrestricted))
-print(table(aa.matched.unrestricted$source,exclude = NULL))
-
-### Reporting table
-
-n.patients <- length(unique(svCompiled$Tumor_Sample_Barcode))
-n.variants <- length(unique(dbAlterations$AAChangeObserved))
-
-c1 <- c("Restricted","Restricted","Unrestricted","Unrestricted")
-c2 <- c("genome","AA change", "genome", "AA change")
-c3 <- c(dim(genome.matched.ot.restricted)[[1]], 
-        dim(aa.matched.ot.restricted)[[1]], 
-        dim(genome.matched.unrestricted)[[1]], 
-        dim(aa.matched.unrestricted)[[1]])
-#c4 <- paste0(round(100*(c3/n.variants),1),"%")
-c5 <- c(sum(genome.matched.ot.restricted$n.patients.mutated), 
-        sum(aa.matched.ot.restricted$n.patients.mutated), 
-        sum(genome.matched.unrestricted$n.patients.mutated), 
-        sum(aa.matched.unrestricted$n.patients.mutated))
-c6 <- paste0(round(100*(c5/n.patients),1),"%") 
-# Create a data frame
-df <- data.frame(c1=c1, c2=c2, c3=c3, c5=c5, c6=c6)
-colnames(df) <- c("Cancer type match restriction", "Cancer type matching approach", "number of variants","number of patients","percent of patients")
-# Print the data frame
-#print(df)
-knitr::kable(df, )
-write.csv(df,"../../output/actionability_db_curration_20231220/actionability_restricted_unrestricted_counts.csv")
 
 ######################################
 ### Build primary reporting tables ###
@@ -161,13 +62,13 @@ aa.match.exhaustive <- svCompiled %>%
                 gene=Hugo_Symbol) # create dummy variable for combining
   
 genome.match.exhaustive <- svCompiled %>%
-  dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome",
+  dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome_annotation",
                                  "Start_Position"="pos",
                                  "Reference_Allele"="ref",
                                  "Tumor_Seq_Allele2"="alt"),
                     relationship = "many-to-many") %>%
   dplyr::mutate(matchAndVarID=paste0(balderVariantID,"-",balderRuleID)) %>%
-  dplyr::mutate(chromosome=Chromosome,
+  dplyr::mutate(chromosome_annotation=Chromosome,
                 pos=Start_Position,
                 ref=Reference_Allele,
                 alt=Tumor_Seq_Allele2) # create dummy variable for combining
@@ -175,13 +76,13 @@ genome.match.exhaustive <- svCompiled %>%
 aa.genome.exahustive <- rbind(aa.match.exhaustive,genome.match.exhaustive) %>% 
   dplyr::group_by(balderVariantID,balderRuleID) %>%
   dplyr::filter(dplyr::row_number()==1) %>%
-  dplyr::mutate(cancerTypeMatchPrimary=oncotree_code==ONCOTREE_CODE & !is.na(ONCOTREE_CODE), # ot code from variants (CAPS) & ot code from annotation (not caps)
-                cancerTypeMatchLevel1=ONCOTREE_CODE==ot_code_level_1 & !is.na(ot_code_level_1),
-                cancerTypeMatchLevel2=ONCOTREE_CODE==ot_code_level_2 & !is.na(ot_code_level_2),
-                cancerTypeMatchLevel3=ONCOTREE_CODE==ot_code_level_3 & !is.na(ot_code_level_3),
-                cancerTypeMatchLevel4=ONCOTREE_CODE==ot_code_level_4 & !is.na(ot_code_level_4),
-                cancerTypeMatchLevel5=ONCOTREE_CODE==ot_code_level_5 & !is.na(ot_code_level_5),
-                cancerTypeMatchLevel6=ONCOTREE_CODE==ot_code_level_6 & !is.na(ot_code_level_6),
+  dplyr::mutate(cancerTypeMatchPrimary=oncotree_code_annotation==ONCOTREE_CODE & !is.na(ONCOTREE_CODE), # ot code from variants (CAPS) & ot code from annotation (not caps)
+                cancerTypeMatchLevel1=oncotree_code_annotation==ot_code_level_1 & !is.na(ot_code_level_1),
+                cancerTypeMatchLevel2=oncotree_code_annotation==ot_code_level_2 & !is.na(ot_code_level_2),
+                cancerTypeMatchLevel3=oncotree_code_annotation==ot_code_level_3 & !is.na(ot_code_level_3),
+                cancerTypeMatchLevel4=oncotree_code_annotation==ot_code_level_4 & !is.na(ot_code_level_4),
+                cancerTypeMatchLevel5=oncotree_code_annotation==ot_code_level_5 & !is.na(ot_code_level_5),
+                cancerTypeMatchLevel6=oncotree_code_annotation==ot_code_level_6 & !is.na(ot_code_level_6),
                 cancerTypeMatch = cancerTypeMatchPrimary | cancerTypeMatchLevel1 | cancerTypeMatchLevel2 | cancerTypeMatchLevel3 | cancerTypeMatchLevel4 | cancerTypeMatchLevel5 | cancerTypeMatchLevel6)
 
 #%>% # filter entries if there is a AA match and genomic match
@@ -189,6 +90,9 @@ aa.genome.exahustive <- rbind(aa.match.exhaustive,genome.match.exhaustive) %>%
                 #annotationMatchAAChange=matchAndVarID %in% aa.match.exhaustive$matchAndVarID)
 aa.genome.exahustive$annotationMatchGenomicCoord <- aa.genome.exahustive$matchAndVarID %in% genome.match.exhaustive$matchAndVarID
 aa.genome.exahustive$annotationMatchAAChange <- aa.genome.exahustive$matchAndVarID %in% aa.match.exhaustive$matchAndVarID
+
+# SQL write
+RSQLite::dbWriteTable(harmonizedDb, "exhaustiveClinicalAnnotatedPatientVariants", aa.genome.exahustive,overwrite=T)
 
 # count variants matched on genomic coord and/ or AA change
 table(aa.genome.exahustive$annotationMatchGenomicCoord,aa.genome.exahustive$annotationMatchAAChange,exclude=NULL)
@@ -207,6 +111,9 @@ aa.genome.representative <- aa.genome.exahustive %>%
 write.csv(aa.genome.representative,
           "../../output/actionability_db_curration_20231220/actionability_representative_variant_table.csv",
           row.names = F)
+# SQL write
+RSQLite::dbWriteTable(harmonizedDb, "representativeClinicalAnnotatedPatientVariants", aa.genome.representative,overwrite=T)
+
 
 # count before and after representative variant selection
 print(dim(aa.genome.exahustive))
@@ -222,9 +129,6 @@ non.annotated.variants <- svCompiled %>%
   dplyr::filter(!balderVariantID %in% aa.genome.representative$balderVariantID) %>%
   dplyr::mutate(clinical_annotation_status="not annotated")
 annotated.and.non.annotated <- rbind(aa.genome.representative,non.annotated.variants) # same as svCompiled, but with annotation columns
-
-
-
 
 ### per-patient summary - from exhaustive table
 exhaustive.matched.patient.summary <- aa.genome.exahustive %>%
@@ -266,9 +170,6 @@ exhaustive.matched.patient.summary <- aa.genome.exahustive %>%
 #   dplyr::arrange(desc(n.variants.matched))
 
 
-
-
-
 ### summary table
 # Combine the pairs into a matrix, then convert to a data frame
 pairs_matrix <- rbind(c("number of starting subjects",length(unique(svCompiled$Tumor_Sample_Barcode))), 
@@ -287,7 +188,7 @@ cType.sample.counts <- svCompiled %>%
   dplyr::group_by(ONCOTREE_CODE) %>%
   dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";")) %>%
-  dplyr::arrange(desc(n.patients))
+  dplyr::arrange(desc(n.patients.total))
 head(cType.sample.counts)
 
 cType.unrestricted.match.summary <- aa.genome.exahustive %>%
@@ -346,6 +247,7 @@ cTypeSummary <- cType.sample.counts %>%
 write.csv(cTypeSummary,"../../output/actionability_db_curration_20231220/test_cancer_type_match_summary_patient_sorted.csv")
 
 
+
 #Columns of summary table:
 # - cancer type
 # - number of patients mutated
@@ -354,7 +256,297 @@ write.csv(cTypeSummary,"../../output/actionability_db_curration_20231220/test_ca
 # - prop with high-confidence match
 # - prop with action type: therapy, prognostic, resistance, or other
 
-outDir <- "../../output/actionability_db_curration_20231220"
+
+### Disconnect from SQL db ###
+RSQLite::dbDisconnect(harmonizedDb)
+
+##############################
+### reporting and analysis ###
+##############################
+
+outDir <- "../../output/clinical_annotation_matching_20240402"
+
+### Cancer Type match summary plots - all samples
+
+cTypeBar <- cTypeSummary %>%
+  dplyr::filter(n.patients.total > 1000) %>%
+  dplyr::arrange(desc(percPatientsUnrestircted)) %>%
+  dplyr::mutate(RestrictedCancerType = replace(percPatientsRestircted, is.na(percPatientsRestircted), 0),
+                UnrestrictedCancerType = percPatientsUnrestircted-RestrictedCancerType) %>%
+  dplyr::select(c("ONCOTREE_CODE","RestrictedCancerType","UnrestrictedCancerType")) %>%
+  tidyr::pivot_longer(!ONCOTREE_CODE,names_to = "match_type",values_to = "value")
+cTypeBar$ONCOTREE_CODE <- factor(cTypeBar$ONCOTREE_CODE,levels=unique(cTypeBar$ONCOTREE_CODE))
+
+outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary.pdf")
+ggplot(cTypeBar,aes(x=ONCOTREE_CODE,y=value,fill=match_type))+
+  geom_bar(stat = "identity", position = "stack",alpha=.6) +
+  theme_bw()+
+  #scale_fill_manual(values = c("X1" = "blue", "X2" = "red")) + 
+  #facet_grid(SourceStudy~.,scale="free_y",)+
+  xlab("Oncotree Code")+
+  ylab("Percent of patients")+
+  ggtitle(paste0("Clinical annotation rates for the 30 most profiled cancer types"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 7)
+
+### restricted - primary vs. met 
+
+cType.primary.met <- aa.genome.representative %>%
+  dplyr::filter(!is.na(cancerTypeMatch)) %>%
+  dplyr::group_by(SAMPLE_TYPE,ONCOTREE_CODE,cancerTypeMatch) %>%
+  dplyr::summarize(n.patients.matched=dplyr::n_distinct(Tumor_Sample_Barcode)) #%>%
+
+cType.sample.counts.primary.met <- svCompiled %>%
+  dplyr::group_by(SAMPLE_TYPE,ONCOTREE_CODE) %>%
+  dplyr::summarise(n.patients=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n.patients)) %>%
+  data.frame()
+
+cTypeSummaryPrimaryMet <- cType.sample.counts.primary.met %>%
+  dplyr::left_join(cType.primary.met,by=c("ONCOTREE_CODE","SAMPLE_TYPE")) %>%
+  dplyr::filter(SAMPLE_TYPE %in% c("Primary","Metastasis")) %>%
+  dplyr::mutate(percPatientsMatched=100*round(n.patients.matched/n.patients,3),
+                patientsRestricted=paste0(n.patients.matched," (",percPatientsMatched,"%)")) %>%
+  data.frame() #%>%
+
+iPrimary <- cType.sample.counts.primary.met$SAMPLE_TYPE=="Primary"
+iHighCount <- cType.sample.counts.primary.met$n.patients > 500
+TopPrimTissue <- cType.sample.counts.primary.met[iPrimary & iHighCount,"ONCOTREE_CODE"]
+
+cTypeBarPrimMet <- cTypeSummaryPrimaryMet %>%
+  dplyr::rename(patient_count=n.patients,
+                match_count=n.patients.matched) %>%
+  tidyr::pivot_longer(c("patient_count","match_count"),names_to = "count_type",values_to = "value") %>%
+  dplyr::filter(ONCOTREE_CODE %in% TopPrimTissue)
+
+codeLevels <- c(cType.sample.counts.primary.met[cType.sample.counts.primary.met$SAMPLE_TYPE=="Primary","ONCOTREE_CODE"])
+codeLevelsMod <- codeLevels[codeLevels %in% c(cTypeBarPrimMet$ONCOTREE_CODE)]
+cTypeBarPrimMet$ONCOTREE_CODE <- factor(cTypeBarPrimMet$ONCOTREE_CODE,
+                                        levels=codeLevels)
+
+outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary_primary_met.pdf")
+ggplot(cTypeBarPrimMet,aes(x=ONCOTREE_CODE,y=value,color=count_type))+
+  geom_point(alpha=.4)+
+  #geom_bar(stat = "identity", position = "stack",alpha=.6) +
+  theme_bw()+
+  #scale_fill_manual(values = c("X1" = "blue", "X2" = "red")) +
+  facet_grid(SAMPLE_TYPE~.,scale="free_y",)+
+  xlab("Oncotree Code")+
+  ylab("number of patients")+
+  #ggtitle(paste0("Clinical annotation rates for the 30 most profiled cancer types"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 7)
+  
+barData <- cTypeSummaryPrimaryMet[cTypeSummaryPrimaryMet$ONCOTREE_CODE %in% TopPrimTissue,] %>%
+  dplyr::arrange(desc(percPatientsMatched))
+barData$ONCOTREE_CODE <- factor(barData$ONCOTREE_CODE,levels=unique(barData$ONCOTREE_CODE))
+
+outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary_primary_met_perc.pdf")
+ggplot(barData,aes(x=ONCOTREE_CODE,y=percPatientsMatched,fill=SAMPLE_TYPE))+
+  geom_bar(stat = "identity", position = "dodge",alpha=.6) +
+  theme_bw()+
+  facet_grid(cancerTypeMatch~.,scale="free_y",)+
+  xlab("Oncotree Code")+
+  ylab("percent of patients")+
+  ylim(c(0,99))+
+  #ggtitle(paste0("Clinical annotation rates for the 30 most profiled cancer types"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 7)
+
+cTypeSummaryPrimaryMetWide <- cTypeSummaryPrimaryMet[,c("SAMPLE_TYPE",
+                                                        "ONCOTREE_CODE",
+                                                        "n.patients",
+                                                        "cancerTypeMatch",
+                                                        "n.patients.matched")] %>%
+  dplyr::filter(!is.na(cancerTypeMatch)) %>%
+  pivot_wider(names_from = cancerTypeMatch,values_from=n.patients.matched) %>%
+  dplyr::rename(restrictedMatchCount=`TRUE`,
+                UnrestrictedTmpCount=`FALSE`) %>%
+  dplyr::mutate(restrictedMatchCount=replace(restrictedMatchCount, is.na(restrictedMatchCount), 0),
+                UnrestrictedTmpCount=replace(UnrestrictedTmpCount, is.na(UnrestrictedTmpCount), 0),
+                UnrestrictedMatchCount=UnrestrictedTmpCount+restrictedMatchCount,
+                PercMatchRestricted=100*(restrictedMatchCount/n.patients),
+                PercMatchUnestricted=100*(UnrestrictedMatchCount/n.patients))
+
+ddBar <- cTypeSummaryPrimaryMetWide %>%
+  dplyr::rename(restricted_cancer_type_match=PercMatchRestricted,
+                unrestricted_cancer_type_match=PercMatchUnestricted) %>%
+  tidyr::pivot_longer(c("restricted_cancer_type_match","unrestricted_cancer_type_match"),names_to = "match_type",values_to = "value") %>%
+  dplyr::filter(ONCOTREE_CODE %in% TopPrimTissue)
+
+outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary_primary_met_perc2.pdf")
+ggplot(ddBar,aes(x=ONCOTREE_CODE,y=value,fill=SAMPLE_TYPE))+
+  geom_bar(stat = "identity", position = "dodge",alpha=.6) +
+  theme_bw()+
+  facet_grid(match_type~.,scale="free_y",)+
+  xlab("Oncotree Code")+
+  ylab("percent of patients")+
+  ylim(c(0,99))+
+  #ggtitle(paste0("Clinical annotation rates for the 30 most profiled cancer types"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 7)
+
+### perform chi-squared test
+chiSqTbl <- cTypeSummaryPrimaryMet[,c("SAMPLE_TYPE",
+                                      "ONCOTREE_CODE",
+                                      "n.patients",
+                                      "cancerTypeMatch",
+                                      "n.patients.matched")] %>%
+  dplyr::filter(!is.na(cancerTypeMatch)) %>%
+  pivot_wider(names_from = SAMPLE_TYPE,values_from=c(n.patients.matched,n.patients)) %>%
+  dplyr::rename(n_matched_Primary=n.patients.matched_Primary,
+                n_matched_Metastasis=n.patients.matched_Metastasis,
+                n_patients_Primary=n.patients_Primary,
+                n_patients_Metastasis=n.patients_Metastasis) %>%
+  dplyr::mutate(n_matched_Primary=replace(n_matched_Primary, is.na(n_matched_Primary), 0),
+                n_matched_Metastasis=replace(n_matched_Metastasis, is.na(n_matched_Metastasis), 0),
+                n_patients_Primary=replace(n_patients_Primary, is.na(n_patients_Primary), 0),
+                n_patients_Metastasis=replace(n_patients_Metastasis, is.na(n_patients_Metastasis), 0),
+                #
+                n_not_matched_Primary=n_patients_Primary-n_matched_Primary,
+                n_not_matched_Metastasis=n_patients_Metastasis-n_matched_Metastasis) %>%
+  dplyr::filter(n_matched_Primary > 300)
+
+
+# # Sample data frame setup (replace with your actual data)
+# cancer_data <- data.frame(
+#   CancerType = c("CancerType1", "CancerType2"), # Example cancer types
+#   PrimaryMatched = c(20, 30), # Example matched counts in primary condition
+#   PrimaryNotMatched = c(80, 70), # Example not matched counts in primary condition
+#   MetastaticMatched = c(25, 35), # Example matched counts in metastatic condition
+#   MetastaticNotMatched = c(75, 65) # Example not matched counts in metastatic condition
+# )
+
+# Function to perform chi-squared test on a single row
+perform_chi_squared_test <- function(row) {
+  # Construct the contingency table for the current row
+  matrix_data <- matrix(c(row["n_matched_Primary"], row["n_not_matched_Primary"],
+                          row["n_matched_Metastasis"], row["n_not_matched_Metastasis"]),
+                        nrow = 2, byrow = TRUE,
+                        dimnames = list(c("Primary", "Metastatic"),
+                                        c("Matched", "Not Matched")))
+  
+  # Perform chi-square test
+  test_result <- chisq.test(matrix_data)
+  
+  # Return the p-value (or any other statistic of interest)
+  return(test_result$p.value)
+}
+
+# Apply the function to each row of the dataframe and collect results
+cntCols <- c("n_matched_Primary","n_not_matched_Primary","n_matched_Metastasis","n_not_matched_Metastasis")
+p_values <- apply(data.frame(chiSqTbl[, cntCols]), 1, function(row) perform_chi_squared_test(as.list(row)))
+
+# View the results
+print(cancer_data)
+
+
+#################################
+### Secondary reporting table ###
+#################################
+
+# Computing actionable variant counts for different match approaches:
+# 1) Unrestricted where no cancer type matching was imposed
+# 2) Restricted with raw cancer type string matching
+
+###
+### join with observed variant table with clinically annotated - by genome position
+genome.matched.unrestricted <- svCompiled %>%
+  dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome_annotation",
+                                 "Start_Position"="pos",
+                                 "Reference_Allele"="ref",
+                                 "Tumor_Seq_Allele2"="alt")) %>%
+  dplyr::group_by(Chromosome,Start_Position,Tumor_Seq_Allele2) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(genome.matched.unrestricted))
+print(table(genome.matched.unrestricted$source,exclude = NULL))
+
+### Unristricted match events - AA Change
+aa.matched.unrestricted <- svCompiled %>%
+  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
+                                 "AAChangeObserved"="AAChange")) %>%
+  dplyr::group_by(Hugo_Symbol,AAChangeObserved) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(aa.matched.unrestricted))
+print(table(aa.matched.unrestricted$source,exclude = NULL))
+
+### impose cancer type matches (genome) - oncotree
+genome.matched.ot.restricted <- svCompiled %>%
+  dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome_annotation",
+                                 "Start_Position"="pos",
+                                 "Reference_Allele"="ref",
+                                 "Tumor_Seq_Allele2"="alt",
+                                 "ONCOTREE_CODE"="oncotree_code_annotation")) %>%
+  dplyr::group_by(Chromosome,Start_Position,Tumor_Seq_Allele2,ONCOTREE_CODE) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   disease=paste0(unique(Disease),collapse=";"),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(genome.matched.unrestricted))
+print(table(genome.matched.unrestricted$source,exclude = NULL))
+
+### impose cancer type matches (protein) - oncotree
+aa.matched.ot.restricted <- svCompiled %>%
+  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
+                                 "AAChangeObserved"="AAChange",
+                                 "ONCOTREE_CODE"="oncotree_code_annotation")) %>%
+  dplyr::group_by(Hugo_Symbol,AAChangeObserved,ONCOTREE_CODE) %>%
+  dplyr::summarize(n.patients.mutated=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   disease=paste0(unique(Disease),collapse=";"),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.patients.mutated))
+print(dim(aa.matched.unrestricted))
+print(table(aa.matched.unrestricted$source,exclude = NULL))
+
+### Build reporting table
+n.patients <- length(unique(svCompiled$Tumor_Sample_Barcode))
+n.variants <- length(unique(dbAlterations$AAChangeObserved))
+
+c1 <- c("Restricted","Restricted","Unrestricted","Unrestricted")
+c2 <- c("genome","AA change", "genome", "AA change")
+c3 <- c(dim(genome.matched.ot.restricted)[[1]], 
+        dim(aa.matched.ot.restricted)[[1]], 
+        dim(genome.matched.unrestricted)[[1]], 
+        dim(aa.matched.unrestricted)[[1]])
+#c4 <- paste0(round(100*(c3/n.variants),1),"%")
+c5 <- c(sum(genome.matched.ot.restricted$n.patients.mutated), 
+        sum(aa.matched.ot.restricted$n.patients.mutated), 
+        sum(genome.matched.unrestricted$n.patients.mutated), 
+        sum(aa.matched.unrestricted$n.patients.mutated))
+c6 <- paste0(round(100*(c5/n.patients),1),"%") 
+# Create a data frame
+df <- data.frame(c1=c1, c2=c2, c3=c3, c5=c5, c6=c6)
+colnames(df) <- c("Cancer type match restriction", "Cancer type matching approach", "number of variants","number of patients","percent of patients")
+# Print the data frame
+#print(df)
+knitr::kable(df, )
+write.csv(df,"../../output/actionability_db_curration_20231220/actionability_restricted_unrestricted_counts.csv")
+
+
+
+##############################################
+### mutant allele frequency (MAF) analysis ###
+##############################################
 
 
 iMafOver100 <- annotated.and.non.annotated$MAF > 100
@@ -365,16 +557,25 @@ ggplot(annotated.and.non.annotated[!iMafOver100,],aes(x=MAF,fill=clinical_annota
   theme_bw()+
   facet_grid(SourceStudy~.,scale="free_y",)+
   xlab("MAF (%)")+
-  ggtitle(paste0("MAF of annotated and non-annotated variants \n in source studies"))+
+  ggtitle(paste0("MAF of unrestricted annotated and non-annotated variants \n in source studies"))+
   scale_fill_brewer(palette="Set1",drop=FALSE)+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 8,width = 7)
 
+### Examine MAF distributions ###
 
-### Examine MAF distributions
+### select cancer type unrestricted data for evaluation
+#data_for_evaluation <- aa.genome.representative
+#MafOutDir <- paste0(outDir,"/MAF_analysis_unrestricted_cancer_types")
 
-outF <-  paste0(outDir,"/MAF_distribution_clinically_actionable.pdf")
-ggplot(aa.genome.representative,aes(x=MAF,fill=actionability.summary))+
+### select cancer type restricted data for evaluation
+data_for_evaluation <- aa.genome.representative %>%
+ dplyr::filter(cancerTypeMatch==T)
+MafOutDir <- paste0(outDir,"/MAF_analysis_restricted_cancer_types")
+
+
+outF <-  paste0(MafOutDir,"/MAF_distribution_clinically_actionable.pdf")
+ggplot(data_for_evaluation,aes(x=MAF,fill=actionability.summary))+
   geom_histogram(alpha=.4)+
   theme_bw()+
   facet_grid(SourceStudy~.,scale="free_y",)+
@@ -385,8 +586,8 @@ ggplot(aa.genome.representative,aes(x=MAF,fill=actionability.summary))+
 ggsave(outF,height = 10,width = 10)
 
 
-outF <-  paste0(outDir,"/MAF_distribution_clinically_actionable_type.pdf")
-ggplot(aa.genome.representative,aes(x=MAF,fill=actionability.summary))+
+outF <-  paste0(MafOutDir,"/MAF_distribution_clinically_actionable_type.pdf")
+ggplot(data_for_evaluation,aes(x=MAF,fill=actionability.summary))+
   geom_density(alpha=.4)+
   theme_bw()+
   facet_grid(SourceStudy~.,scale="free_y",)+
@@ -396,12 +597,12 @@ ggplot(aa.genome.representative,aes(x=MAF,fill=actionability.summary))+
 ggsave(outF,height = 10,width = 10)
 
 
-isMetPrim <- aa.genome.representative$SAMPLE_TYPE %in% c("Metastasis","Primary")
-isMC3 <- aa.genome.representative$SourceStudy == "TCGA-MC3-data"
-met.or.primary <- aa.genome.representative[isMetPrim & !isMC3,]
+isMetPrim <- data_for_evaluation$SAMPLE_TYPE %in% c("Metastasis","Primary")
+isMC3 <- data_for_evaluation$SourceStudy == "TCGA-MC3-data"
+met.or.primary <- data_for_evaluation[isMetPrim & !isMC3,]
 
 ### density plots of actionability type,met/primary, and data source
-outF <-  paste0(outDir,"/MAF_distribution_clinically_actionable_type_primary_met.pdf")
+outF <-  paste0(MafOutDir,"/MAF_distribution_clinically_actionable_type_primary_met.pdf")
 ggplot(met.or.primary,aes(x=MAF,fill=actionability.summary))+
   geom_density(alpha=.4)+
   theme_bw()+
@@ -412,7 +613,7 @@ ggplot(met.or.primary,aes(x=MAF,fill=actionability.summary))+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 10,width = 10)
 
-outF <-  paste0(outDir,"/MAF_distribution_met_vs_primary.pdf")
+outF <-  paste0(MafOutDir,"/MAF_distribution_met_vs_primary.pdf")
 ggplot(met.or.primary,aes(x=MAF,fill=SAMPLE_TYPE))+
   geom_density(alpha=.4)+
   theme_bw()+
@@ -423,19 +624,18 @@ ggplot(met.or.primary,aes(x=MAF,fill=SAMPLE_TYPE))+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 6,width = 10)
 
-
 ### create comparisons of distribution types
 testResDf <- data.frame()
 
-srcStudies <- unique(aa.genome.representative$SourceStudy)
-#sampleTypes <- unique(aa.genome.representative$SAMPLE_TYPE)
+srcStudies <- unique(data_for_evaluation$SourceStudy)
+#sampleTypes <- unique(data_for_evaluation$SAMPLE_TYPE)
 sampleTypes <- c("Metastasis","Primary")
-actionSummTypes <- unique(aa.genome.representative$actionability.summary)
+actionSummTypes <- unique(data_for_evaluation$actionability.summary)
 for (testSource in srcStudies) {
   print(testSource)
-  ixSrc <- aa.genome.representative$SourceStudy == testSource
+  ixSrc <- data_for_evaluation$SourceStudy == testSource
   for (xMetPrim in sampleTypes) {
-    ixMetPrim <- aa.genome.representative$SAMPLE_TYPE == xMetPrim
+    ixMetPrim <- data_for_evaluation$SAMPLE_TYPE == xMetPrim
     for (i in 1:(length(actionSummTypes) - 1)) {
       for (j in (i + 1):length(actionSummTypes)) { 
         
@@ -443,11 +643,11 @@ for (testSource in srcStudies) {
         yAS <- actionSummTypes[j]
         
         # conditions of test
-        ixActionSumm <- aa.genome.representative$actionability.summary == xAS
-        iyActionSumm <- aa.genome.representative$actionability.summary == yAS
+        ixActionSumm <- data_for_evaluation$actionability.summary == xAS
+        iyActionSumm <- data_for_evaluation$actionability.summary == yAS
         
-        xVarSubset <- aa.genome.representative[ixSrc & ixMetPrim & ixActionSumm,]
-        yVarSubset <- aa.genome.representative[ixSrc & ixMetPrim & iyActionSumm,]
+        xVarSubset <- data_for_evaluation[ixSrc & ixMetPrim & ixActionSumm,]
+        yVarSubset <- data_for_evaluation[ixSrc & ixMetPrim & iyActionSumm,]
         print(dim(xVarSubset))
         print(dim(yVarSubset))
         
@@ -497,7 +697,7 @@ for (testSource in srcStudies) {
         ks_value <- xx[which.max(diffs)]
         
         # Plot the empirical CDFs using ggplot2
-        outF <-  paste0(outDir,"/MAF_distributions_actionable_",xAS,"_",yAS,"_",xMetPrim,"_",testSource,"_ecdf.pdf")
+        outF <-  paste0(MafOutDir,"/MAF_distributions_actionable_",xAS,"_",yAS,"_",xMetPrim,"_",testSource,"_ecdf.pdf")
         ggplot(ecdf_data, aes(x = x, y = y, color = Condition)) + 
           geom_line() +
           geom_vline(xintercept = ks_value, linetype = "dotted", color = "black", size = 1) +
@@ -508,7 +708,7 @@ for (testSource in srcStudies) {
         ggsave(outF,height = 6,width = 6)
         
         ## density plot
-        outF <-  paste0(outDir,"/MAF_distributions_actionable_",xAS,"_",yAS,"_",xMetPrim,"_",testSource,".pdf")
+        outF <-  paste0(MafOutDir,"/MAF_distributions_actionable_",xAS,"_",yAS,"_",xMetPrim,"_",testSource,".pdf")
         ggplot(mafDf,aes(x=value,fill=condition))+
           geom_density(alpha=.4)+
           theme_bw()+
@@ -575,11 +775,11 @@ testResDf <- testResDf %>%
   dplyr::arrange(wilcox_p_value) %>%
   dplyr::mutate(significant = p_adjusted_wilcox < 0.05,
                 c1_c2_median_MAF_difference = c1_median - c2_median)
-
-write.csv(testResDf,"../../output/actionability_db_curration_20231220/actionability_type_MAF_wilcox_test.csv")
+outF <- paste0(MafOutDir,"/actionability_type_MAF_wilcox_test.csv")
+write.csv(testResDf,outF)
 
 ### plot directionality of relationships and significance
-outF <-  paste0(outDir,"/MAF_distribution_wilcox_test_results.pdf")
+outF <-  paste0(MafOutDir,"/MAF_distribution_wilcox_test_results.pdf")
 ggplot(testResDf,aes(x=source_study,y=wilcox_estimate,shape=significant,color=SampleType))+
   geom_point(alpha=.8)+
   theme_bw()+
@@ -593,7 +793,7 @@ ggplot(testResDf,aes(x=source_study,y=wilcox_estimate,shape=significant,color=Sa
 ggsave(outF,height = 8,width = 7)
 
 ### plot wilcox estimate and median MAF difference 
-outF <-  paste0(outDir,"/MAF_wilcox_estimate_and_median_diff.pdf")
+outF <-  paste0(MafOutDir,"/MAF_wilcox_estimate_and_median_diff.pdf")
 ggplot(testResDf,aes(x=wilcox_estimate,y=c1_c2_median_MAF_difference,shape=significant,color=SampleType))+
   geom_point(alpha=.8)+
   theme_bw()+
@@ -601,7 +801,7 @@ ggplot(testResDf,aes(x=wilcox_estimate,y=c1_c2_median_MAF_difference,shape=signi
 ggsave(outF,height = 5,width = 5)
 
 ### top variant summary
-atGroupVariantSummary <- aa.genome.representative %>%
+atGroupVariantSummary <- data_for_evaluation %>%
   dplyr::group_by(actionability.summary,Hugo_Symbol,HGVSp_Short) %>%
   dplyr::summarise(n=n()) %>%
   dplyr::arrange(desc(n))
@@ -612,7 +812,7 @@ atGroupVariantSummaryTop <- atGroupVariantSummary %>%
   dplyr::filter(dplyr::row_number() < 16) %>%
   dplyr::mutate(variantName=paste0(Hugo_Symbol," ",HGVSp_Short))
 
-outF <-  paste0(outDir,"/top_variants_by_actionability_type_unristricted.pdf")
+outF <-  paste0(MafOutDir,"/top_variants_by_actionability_type_unristricted.pdf")
 ggplot(atGroupVariantSummaryTop,aes(x=actionability.summary,y=n))+
   geom_point(alpha=.8)+
   ggtitle(paste0("Top 15 variants by actionability type \n unrestricted cancer type"))+
@@ -623,7 +823,23 @@ ggplot(atGroupVariantSummaryTop,aes(x=actionability.summary,y=n))+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 9,width = 9)
 
-table(aa.genome.representative$actionability.summary,aa.genome.representative$cancerTypeMatch)
+outF <-  paste0(MafOutDir,"/top_variants_by_actionability_type_unristricted_log.pdf")
+ggplot(atGroupVariantSummaryTop[atGroupVariantSummaryTop$n>1,],aes(x=actionability.summary,y=n))+
+  geom_point(alpha=.8)+
+  #geom_jitter(alpha=.8,width = .1)+
+  ggtitle(paste0("Top 15 variants by actionability type"))+
+  #geom_text(aes(label = variantName), nudge_x = 0.0, nudge_y = 0.2)+
+  geom_text_repel(aes(label = variantName))+
+  scale_y_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  )+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 9,width = 12)
+
+table(data_for_evaluation$actionability.summary,data_for_evaluation$cancerTypeMatch)
 
 
 
