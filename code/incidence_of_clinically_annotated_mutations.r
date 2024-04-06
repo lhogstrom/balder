@@ -374,25 +374,6 @@ cTypeSummaryPrimaryMetWide <- cTypeSummaryPrimaryMet[,c("SAMPLE_TYPE",
                 PercMatchRestricted=100*(restrictedMatchCount/n.patients),
                 PercMatchUnestricted=100*(UnrestrictedMatchCount/n.patients))
 
-ddBar <- cTypeSummaryPrimaryMetWide %>%
-  dplyr::rename(restricted_cancer_type_match=PercMatchRestricted,
-                unrestricted_cancer_type_match=PercMatchUnestricted) %>%
-  tidyr::pivot_longer(c("restricted_cancer_type_match","unrestricted_cancer_type_match"),names_to = "match_type",values_to = "value") %>%
-  dplyr::filter(ONCOTREE_CODE %in% TopPrimTissue)
-
-outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary_primary_met_perc2.pdf")
-ggplot(ddBar,aes(x=ONCOTREE_CODE,y=value,fill=SAMPLE_TYPE))+
-  geom_bar(stat = "identity", position = "dodge",alpha=.6) +
-  theme_bw()+
-  facet_grid(match_type~.,scale="free_y",)+
-  xlab("Oncotree Code")+
-  ylab("percent of patients")+
-  ylim(c(0,99))+
-  #ggtitle(paste0("Clinical annotation rates for the 30 most profiled cancer types"))+
-  scale_fill_brewer(palette="Set1",drop=FALSE)+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave(outF,height = 8,width = 7)
 
 ### perform chi-squared test
 chiSqTbl <- cTypeSummaryPrimaryMet[,c("SAMPLE_TYPE",
@@ -413,29 +394,18 @@ chiSqTbl <- cTypeSummaryPrimaryMet[,c("SAMPLE_TYPE",
                 #
                 n_not_matched_Primary=n_patients_Primary-n_matched_Primary,
                 n_not_matched_Metastasis=n_patients_Metastasis-n_matched_Metastasis) %>%
-  dplyr::filter(n_matched_Primary > 300)
-
-
-# # Sample data frame setup (replace with your actual data)
-# cancer_data <- data.frame(
-#   CancerType = c("CancerType1", "CancerType2"), # Example cancer types
-#   PrimaryMatched = c(20, 30), # Example matched counts in primary condition
-#   PrimaryNotMatched = c(80, 70), # Example not matched counts in primary condition
-#   MetastaticMatched = c(25, 35), # Example matched counts in metastatic condition
-#   MetastaticNotMatched = c(75, 65) # Example not matched counts in metastatic condition
-# )
+  dplyr::filter(ONCOTREE_CODE %in% TopPrimTissue)
 
 # Function to perform chi-squared test on a single row
 perform_chi_squared_test <- function(row) {
   # Construct the contingency table for the current row
-  matrix_data <- matrix(c(row["n_matched_Primary"], row["n_not_matched_Primary"],
-                          row["n_matched_Metastasis"], row["n_not_matched_Metastasis"]),
-                        nrow = 2, byrow = TRUE,
-                        dimnames = list(c("Primary", "Metastatic"),
-                                        c("Matched", "Not Matched")))
+  M <- as.table(rbind(c(row["n_matched_Primary"][[1]], row["n_not_matched_Primary"][[1]]), 
+                      c(row["n_matched_Metastasis"][[1]], row["n_not_matched_Metastasis"][[1]])))
+  dimnames(M) <- list(c("Primary", "Metastatic"),
+                      c("Matched", "Not Matched"))
   
   # Perform chi-square test
-  test_result <- chisq.test(matrix_data)
+  test_result <- chisq.test(M)
   
   # Return the p-value (or any other statistic of interest)
   return(test_result$p.value)
@@ -443,11 +413,160 @@ perform_chi_squared_test <- function(row) {
 
 # Apply the function to each row of the dataframe and collect results
 cntCols <- c("n_matched_Primary","n_not_matched_Primary","n_matched_Metastasis","n_not_matched_Metastasis")
-p_values <- apply(data.frame(chiSqTbl[, cntCols]), 1, function(row) perform_chi_squared_test(as.list(row)))
+chiSqTbl$p_value <- apply(data.frame(chiSqTbl[, cntCols]), 1, function(row) perform_chi_squared_test(as.list(row)))
+chiSqTbl <- chiSqTbl %>%
+  dplyr::arrange(p_value) %>%
+  dplyr::mutate(significance_str = if_else(p_value < 0.05, "*", "")) %>%
+  dplyr::left_join(cType.sample.counts,
+                   by="ONCOTREE_CODE")
 
-# View the results
-print(cancer_data)
+outF <- paste0(outDir,"/chi_sq_test_of_prim_met_match_rate.csv")
+write.csv(chiSqTbl,outF)
 
+### Plot chiSqTbl results
+
+
+
+
+
+ddBar <- cTypeSummaryPrimaryMetWide %>%
+  dplyr::rename(restricted_cancer_type_match=PercMatchRestricted,
+                unrestricted_cancer_type_match=PercMatchUnestricted) %>%
+  tidyr::pivot_longer(c("restricted_cancer_type_match","unrestricted_cancer_type_match"),names_to = "match_type",values_to = "value") %>%
+  dplyr::filter(ONCOTREE_CODE %in% TopPrimTissue) #%>%
+ddBar$ONCOTREE_CODE <- factor(ddBar$ONCOTREE_CODE, levels=unique(chiSqTbl$ONCOTREE_CODE))
+
+
+outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary_primary_met_perc2.pdf")
+ggplot(ddBar,aes(x=ONCOTREE_CODE,y=value,fill=SAMPLE_TYPE))+
+  geom_bar(stat = "identity", position = "dodge",alpha=.6) +
+  theme_bw()+
+  facet_grid(match_type~.,scale="free_y",)+
+  xlab("Oncotree Code")+
+  ylab("percent of patients")+
+  ylim(c(0,99))+
+  #ggtitle(paste0("Clinical annotation rates for the 30 most profiled cancer types"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 7)
+
+
+# restricted cancer types only
+ddBar2 <- ddBar %>%
+  dplyr::filter(match_type=="restricted_cancer_type_match",
+                value>0) %>%
+  dplyr::left_join(chiSqTbl[,c("ONCOTREE_CODE","significance_str")],
+                   by="ONCOTREE_CODE")
+ddBar2$ONCOTREE_CODE <- factor(ddBar2$ONCOTREE_CODE, levels=unique(chiSqTbl$ONCOTREE_CODE))
+ddBar2[ddBar2$SAMPLE_TYPE=="Primary","significance_str"] <- ""
+
+outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary_primary_met_perc3.pdf")
+ggplot(ddBar2,aes(x=ONCOTREE_CODE,y=value,fill=SAMPLE_TYPE))+
+  geom_bar(stat = "identity", position = "dodge",alpha=.6) +
+  theme_bw()+
+  geom_text(aes(label = significance_str, y = value + 5))+
+  #facet_grid(match_type~.,scale="free_y",)+
+  xlab("Oncotree Code")+
+  ylab("percent of patients")+
+  ylim(c(0,99))+
+  #ggtitle(paste0("Restricted clinical annotation"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 6)
+
+
+### look at resistance markers in primary vs. met
+
+cType.primary.met.resistance <- aa.genome.exahustive %>%
+  dplyr::filter(actionability.summary=="Therapy resistance",
+                cancerTypeMatch == TRUE,
+                !is.na(cancerTypeMatch),
+                clinical.evidence.summary=="High Confidence") %>%
+  dplyr::group_by(SAMPLE_TYPE,ONCOTREE_CODE) %>%
+  dplyr::summarize(n.patients.matched=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n.patients.matched))
+
+# cType.sample.counts.primary.met <- svCompiled %>%
+#   dplyr::group_by(SAMPLE_TYPE,ONCOTREE_CODE) %>%
+#   dplyr::summarise(n.patients=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+#   dplyr::arrange(desc(n.patients)) %>%
+#   data.frame()
+
+highCntsSamples <- cType.sample.counts[cType.sample.counts$n.patients.total>100,]
+
+cTypeSummaryPrimaryMetResistance <- cType.primary.met.resistance %>%
+  dplyr::filter(ONCOTREE_CODE %in% highCntsSamples$ONCOTREE_CODE) %>%
+  dplyr::left_join(cType.sample.counts.primary.met,by=c("ONCOTREE_CODE","SAMPLE_TYPE")) %>%
+  dplyr::left_join(ot_code_full[,c("ot_code","ot_name")],by=c("ONCOTREE_CODE"="ot_code")) %>%
+  dplyr::filter(SAMPLE_TYPE %in% c("Primary","Metastasis")) %>%
+  dplyr::mutate(percPatientsMatched=100*round(n.patients.matched/n.patients,3),
+                patientsRestricted=paste0(n.patients.matched," (",percPatientsMatched,"%)")) %>%
+  dplyr::arrange(desc(percPatientsMatched)) %>%
+  data.frame() #%>%
+cTypeSummaryPrimaryMetResistance$ot_name <- factor(cTypeSummaryPrimaryMetResistance$ot_name,
+                                                         levels=unique(cTypeSummaryPrimaryMetResistance$ot_name))
+#cTypeSummaryPrimaryMetResistance$ONCOTREE_CODE <- factor(cTypeSummaryPrimaryMetResistance$ONCOTREE_CODE,
+#                                                         levels=unique(cTypeSummaryPrimaryMetResistance$ONCOTREE_CODE))
+
+  
+outF <-  paste0(outDir,"/cancer_type_resistance_primary_met_perc.pdf")
+ggplot(cTypeSummaryPrimaryMetResistance,aes(y=ot_name,x=percPatientsMatched,fill=SAMPLE_TYPE))+
+  geom_bar(stat = "identity", position = "dodge",alpha=.6) +
+  theme_bw()+
+  #geom_text(aes(label = significance_str, y = value + 5))+
+  #facet_grid(match_type~.,scale="free_y",)+
+  xlab("Oncotree Code")+
+  xlab("percent of patients")+
+  xlim(c(0,60))+
+  #ggtitle(paste0("Restricted clinical annotation"))+
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 8)
+
+
+### resistance markers primary vs. met
+
+AAChange.primary.met.resistance <- aa.genome.exahustive %>%
+  dplyr::filter(actionability.summary=="Therapy resistance",
+                cancerTypeMatch == TRUE,
+                !is.na(cancerTypeMatch),
+                clinical.evidence.summary=="High Confidence") %>%
+  dplyr::group_by(SAMPLE_TYPE,Hugo_Symbol,AAChange) %>%
+  dplyr::summarize(n.patients.matched=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n.patients.matched))
+
+sampleTypeCnt <- aa.genome.exahustive %>%
+  dplyr::group_by(SAMPLE_TYPE) %>%
+  dplyr::summarize(n.patients=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n.patients))
+
+AAChangePrimaryMetResistance <- AAChange.primary.met.resistance %>%
+  #dplyr::filter(ONCOTREE_CODE %in% highCntsSamples$ONCOTREE_CODE) %>%
+  dplyr::filter(SAMPLE_TYPE %in% c("Primary","Metastasis")) %>%
+  dplyr::left_join(sampleTypeCnt,by=c("SAMPLE_TYPE")) %>%
+  dplyr::mutate(aaStr=paste0(Hugo_Symbol,"-",AAChange),
+                percPatientsMatched=100*round(n.patients.matched/n.patients,3),
+                patientsRestricted=paste0(n.patients.matched," (",percPatientsMatched,"%)")) %>%
+  dplyr::arrange(desc(percPatientsMatched)) %>%
+  data.frame() #%>%
+AAChangePrimaryMetResistance$aaStr <- factor(AAChangePrimaryMetResistance$aaStr,
+                                                   levels=unique(AAChangePrimaryMetResistance$aaStr))
+
+outF <-  paste0(outDir,"/resistance_primary_met_perc_AA_change.pdf")
+ggplot(AAChangePrimaryMetResistance,aes(y=aaStr,x=percPatientsMatched,fill=SAMPLE_TYPE))+
+  geom_bar(stat = "identity", position = "dodge",alpha=.6) +
+  theme_bw()+
+  #geom_text(aes(label = significance_str, y = value + 5))+
+  xlab("Resistance marker")+
+  xlab("percent of patients")+
+  #ggtitle(paste0("Restricted clinical annotation"))+
+  scale_fill_brewer(palette="Set4",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 4)
 
 #################################
 ### Secondary reporting table ###
