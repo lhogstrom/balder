@@ -43,7 +43,8 @@ reticulate::use_condaenv(condaenv="/Users/larsonhogstrom/anaconda3/envs/balder_c
 ```{r}
 bDir <- "../../data/processed/balderResultsDb"
 figDir <- "../../output/actionability_db_curration_20231220"
-mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+#mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/actionable-biomarker-db.sqlite"))
+mydb <- DBI::dbConnect(RSQLite::SQLite(), paste0(bDir,"/balder-compiled-raw-data-v20240311.sqlite"))
 
 #genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GeniePatientVarients')
 sample.genie <- RSQLite::dbGetQuery(mydb, 'SELECT * FROM GenieClinicalSampleData')
@@ -68,13 +69,13 @@ The following fields are contained in the patient data file:
 
 7.  **Interval in days from DOB to date of death (INT_DOD)**: The number of days from the patient's date of birth to their date of death (if applicable).
 
-8.  **Year of last contact (YEAR_CONTACT)**: The year in which the patient was last known to be alive.
+8.  **Year of last contact (YEAR_CONTACT)**: Record the year that the patient is last known to be alive - data to be derived from information including and EHR, tumor registry, or other system
 
 9.  **Vital Status (DEAD)**: Indicates whether the patient is deceased.
 
 10. **Year of Death (YEAR_DEATH)**: The year in which the patient died (if applicable).
 
-# Exploratory data analysis
+# Null field summary
 
 Summary of columns and proportion of null entries
 
@@ -96,10 +97,152 @@ for (x in colnames(patient.genie)) {
 knitr::kable(nullSumm, format="latex", align="l")
 ```
 
+# Defining an inferred duration of treatment 
+
+```{r}
+#| echo: true
+#| include: true
+
+# define infered treatment duration
+
+#### death
+iNumericDoD <- as.numeric(patient.genie$INT_DOD)
+isNullDoD <- is.na(iNumericDoD)
+# which proportion don't have a proper date for DoD
+table(isNullDoD)
+# identity of non-numeric entries
+table(patient.genie$INT_DOD[isNullDoD])
+
+# all of the not dead and Unknown death samples have non-null death entry
+#table(isNullDoD,patient.genie$DEAD_status)
+
+### contact days
+iNumericContact <- as.numeric(patient.genie$INT_CONTACT)
+isNullContact <- is.na(iNumericContact)
+table(isNullContact)
+
+# non-null death or contact days
+iNullDoDAndContact <- isNullContact | isNullDoD
+patient.genie[!iNullDoDAndContact,"INT_TREAT_WITH_DEATH"] <- iNumericDoD[!iNullDoDAndContact] - iNumericContact[!iNullDoDAndContact]
+
+
+```
+
+```{r}
+#| echo: true
+#| include: true
+
+#outF <-  paste0(outDir,"/cancer_type_clinical_annotation_match_summary.pdf")
+ggplot(patient.genie,aes(x=INT_TREAT_WITH_DEATH))+
+  geom_density()+
+  theme_bw()+
+  xlim(-25,100)+
+  ggtitle(paste0("Infered treatment time for patients with death date"))+
+  theme(plot.title = element_text(hjust = 0.5))
+#ggsave(outF,height = 8,width = 7)
+
+```
+
+```{r}
+#| echo: true
+#| include: true
+
+# define infered treatment duration (years)
+iNumericDoD <- as.numeric(patient.genie$YEAR_DEATH)
+isNullDoD <- is.na(iNumericDoD)
+# which proportion don't have a proper date for DoD
+table(isNullDoD)
+# identity of non-numeric entries
+table(patient.genie$YEAR_DEATH[isNullDoD])
+
+# all of the not dead and Unknown death samples have non-null death entry
+#table(isNullDoD,patient.genie$DEAD_status)
+
+### contact days
+iNumericContact <- as.numeric(patient.genie$YEAR_CONTACT)
+isNullContact <- is.na(iNumericContact)
+table(isNullContact)
+
+# non-null death or contact days
+iNullDoDAndContact <- isNullContact | isNullDoD
+patient.genie[!iNullDoDAndContact,"INT_DEATH_CONTACT_YEAR"] <- iNumericDoD[!iNullDoDAndContact] - iNumericContact[!iNullDoDAndContact]
+
+
+ggplot(patient.genie,aes(x=INT_DEATH_CONTACT_YEAR))+
+  geom_density()+
+  theme_bw()+
+  xlim(-2,7)+
+  ggtitle(paste0("Infered treatment time for patients with death date"))+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+sample.genie$AGE_AT_SEQ_REPORT_NUMERIC <- as.numeric(sample.genie$AGE_AT_SEQ_REPORT)
+sample.genie$INF_AGE_SEQ_REPORT_DAYS <- (sample.genie$AGE_AT_SEQ_REPORT_NUMERIC * 365) + 183
+samplePatient <- sample.genie %>%
+  dplyr::left_join(patient.genie,by="PATIENT_ID") %>%
+  dplyr::mutate(
+    INT_SEQ_TO_DEATH = if_else(
+      !is.na(as.numeric(INT_DOD)) & !is.na(as.numeric(INF_AGE_SEQ_REPORT_DAYS)),
+      as.numeric(INT_DOD) - INF_AGE_SEQ_REPORT_DAYS,
+      NA  # Assign NA of type double if conditions are not met
+    )
+  )
+
+table(is.na(samplePatient$INT_SEQ_TO_DEATH))
+table(samplePatient$INT_SEQ_TO_DEATH < 0, exclude=NULL)
+
+ggplot(samplePatient,aes(x=INT_SEQ_TO_DEATH))+
+  geom_density()+
+  theme_bw()+
+  xlim(-500,2000)+
+  ggtitle(paste0("Infered days between sequencing report and death"))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+#hasNumericSeqDateAndDeath <- !is.na(samplePatient$INT_DOD) | !is.na(samplePatient$INF_AGE_SEQ_REPORT_DAYS)
+#samplePatient$INT_SEQ_TO_DEATH <- samplePatient$INT_DOD - samplePatient$INF_AGE_SEQ_REPORT_DAYS
+```
+
+```{r}
+ggplot(samplePatient,aes(x=INT_SEQ_TO_DEATH,fill=SAMPLE_TYPE))+
+  geom_density(alpha=.3)+
+  theme_bw()+
+  xlim(-500,2000)+
+  ggtitle(paste0("Infered days between sequencing report and death"))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+iPrimOrMet <- samplePatient$SAMPLE_TYPE=="Primary" | samplePatient$SAMPLE_TYPE=="Metastasis"
+ggplot(samplePatient[iPrimOrMet,],aes(x=INT_SEQ_TO_DEATH,fill=SAMPLE_TYPE))+
+  geom_density(alpha=.3)+
+  theme_bw()+
+  xlim(-500,2000)+
+  ggtitle(paste0("Infered days between sequencing report and death"))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+# primary vs. met sample counts
+
+```{r}
+primMetCnts <- samplePatient %>%
+  dplyr::group_by(PATIENT_ID,) %>%
+  dplyr::summarise(nSamples=dplyr::n(),
+                   nPrimary=sum(SAMPLE_TYPE=="Primary"),
+                   nMet=sum(SAMPLE_TYPE=="Metastasis"))
+table(primMetCnts$nSamples)
+table(primMetCnts$nPrimary,primMetCnts$nMet)
+
+```
+
+# Python exploratory analysis
+
 Print data from python
 
 ```{r}
-patient_py = reticulate::r_to_py(patient.genie)
+patient_py = reticulate::r_to_py(patient.genie,by=)
 ```
 
 ```{python}
@@ -259,6 +402,24 @@ categorical_summary <- patient.genie %>%
 
 ```{r}
 ggpairs(patient.genie[,c("SEX","DEAD")]) #"PRIMARY_RACE",
+```
+
+# Binary Death assignments
+
+``` r
+{r}
+#| echo: true
+
+patient.genie$DEAD_status <- patient.genie$DEAD
+patient.genie[is.na(patient.genie$DEAD),"DEAD_status"] <- "Unknown"
+patient.genie[patient.genie$DEAD=="","DEAD_status"] <- "Unknown"
+patient.genie[patient.genie$DEAD=="Not Collected","DEAD_status"] <- "Unknown"
+patient.genie[patient.genie$DEAD=="Not Released","DEAD_status"] <- "Unknown"
+patient.genie[patient.genie$DEAD=="True","DEAD_status"] <- "TRUE"
+patient.genie[patient.genie$DEAD=="False","DEAD_status"] <- "FALSE"
+print(table(patient.genie$DEAD_status))
+
+table(patient.genie$YEAR_DEATH)
 ```
 
 # 

@@ -22,6 +22,21 @@ rawDataDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName2)
 ######################################################
 ### patient and sample tables from various studies ###
 ######################################################
+# define output columns for harmonized sample info
+harmSampleCols <- c("SAMPLE_ID",
+                    "CANCER_TYPE",
+                    "CANCER_TYPE_DETAILED",
+                    "ONCOTREE_CODE",
+                    "SAMPLE_TYPE",
+                    "SAMPLE_TYPE_DETAILED",
+                    "SEQ_ASSAY_ID",
+                    "AGE_AT_SEQ_REPORT",
+                    "STAGE",
+                    "tumorPurity",
+                    "INT_Biopsy_To_Death",
+                    "INT_SEQ_TO_DEATH",
+                    "INT_SEQ_TO_CONTACT",
+                    "SourceStudy")
 
 ### load hartwig data
 baseDir <- "../../data/Hartwig/data" 
@@ -38,13 +53,25 @@ RSQLite::dbWriteTable(rawDataDb, "hartwigSampleInfo", sampleList)
 RSQLite::dbWriteTable(rawDataDb, "hartwigMetadata", hMeta)
 RSQLite::dbWriteTable(rawDataDb, "hartwigPreBiopsyDrugs", hTreatment)
 
+### calculate difference of age and sample type
+biopsyDateNum <- as.Date(hMeta$biopsyDate,"%Y-%m-%d")
+deathDateNum <- as.Date(hMeta$deathDate,"%Y-%m-%d")
+hMeta$INT_Biopsy_To_Death <- deathDateNum - biopsyDateNum
+
 # sample columns needed: cancer type, met/primary
-hSampleSubset <- hMeta[,c("sampleId","primaryTumorLocation","primaryTumorType")]
-colnames(hSampleSubset) <- c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED")
-hSampleSubset$ONCOTREE_CODE <- NA # no code listed by authors
+hSampleSubset <- hMeta[,c("sampleId","primaryTumorLocation","primaryTumorType","tumorPurity","INT_Biopsy_To_Death")]
+colnames(hSampleSubset) <- c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","tumorPurity","INT_Biopsy_To_Death")
 hSampleSubset$SAMPLE_TYPE <- "Metastasis" # assume all samples are met from Hartwig
 hSampleSubset$SourceStudy <- "Hartwig-data"
-RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", hSampleSubset,overwrite=T)
+hSampleSubset$ONCOTREE_CODE <- NA # no code listed by authors
+hSampleSubset$SAMPLE_TYPE_DETAILED <- NA
+hSampleSubset$SEQ_ASSAY_ID <- NA
+hSampleSubset$AGE_AT_SEQ_REPORT <- NA
+hSampleSubset$STAGE <- NA
+hSampleSubset$INT_SEQ_TO_DEATH <- NA
+hSampleSubset$INT_SEQ_TO_CONTACT <- NA
+
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", hSampleSubset[,harmSampleCols],overwrite=T)
 
 ###  MSK-IMPACT
 inFile <- "../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt"
@@ -62,6 +89,11 @@ RSQLite::dbWriteTable(rawDataDb, "pancanMetadata", pancanSampInfo)
 
 pancanSampleSubset <- pancanSampInfo[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
 pancanSampleSubset$SourceStudy <- "PANCAN-WGS-data"
+pancanSampleSubset$SAMPLE_TYPE_DETAILED <- NA
+pancanSampleSubset$SEQ_ASSAY_ID <- NA
+pancanSampleSubset$AGE_AT_SEQ_REPORT <- NA
+pancanSampleSubset$tumorPurity <- NA
+
 RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", pancanSampleSubset,append=T)
 
 ### AACR GENIE
@@ -85,9 +117,36 @@ inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sampl
 sample.genie <- read.csv(inFile,sep="\t",skip=4)
 RSQLite::dbWriteTable(rawDataDb, "GenieClinicalSampleData", sample.genie)
 
-genieSampleSubset <- sample.genie[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
-genieSampleSubset$SourceStudy <- "AACR-GENIE-data"
+sample.genie$SourceStudy <- "AACR-GENIE-data"
+sample.genie$STAGE <- NA
+genieSampleSubset <- sample.genie[,harmSampleCols]
+
 RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", genieSampleSubset,append=T)
+
+
+### join sample data to patient data and create inferred variables
+# sample.genie$AGE_AT_SEQ_REPORT_NUMERIC <- as.numeric(sample.genie$AGE_AT_SEQ_REPORT)
+# sample.genie$INF_AGE_SEQ_REPORT_DAYS <- (sample.genie$AGE_AT_SEQ_REPORT_NUMERIC * 365) + 183
+# samplePatient <- sample.genie %>%
+#   dplyr::left_join(patient.genie,by="PATIENT_ID") %>%
+#   dplyr::mutate(
+#     INT_SEQ_TO_DEATH = if_else(
+#       !is.na(as.numeric(INT_DOD)) & !is.na(as.numeric(INF_AGE_SEQ_REPORT_DAYS)),
+#       as.numeric(INT_DOD) - INF_AGE_SEQ_REPORT_DAYS,
+#       NA  # Assign NA of type double if conditions are not met
+#     ),
+#     INT_SEQ_TO_CONTACT = if_else(
+#       !is.na(as.numeric(IINT_CONTACTNT_DOD)) & !is.na(as.numeric(INF_AGE_SEQ_REPORT_DAYS)),
+#       as.numeric(INT_CONTACT) - INF_AGE_SEQ_REPORT_DAYS,
+#       NA  # Assign NA of type double if conditions are not met
+#     )
+#   )
+# 
+# c("AGE_AT_SEQ_REPORT",
+#   "DEAD",
+#   "INT_SEQ_TO_DEATH",
+#   "INT_SEQ_TO_CONTACT")
+
 
 # to-do: compile minimal patient columns across data sets: age, gender, race, ethnicity 
 
