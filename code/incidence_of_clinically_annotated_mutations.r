@@ -960,5 +960,3 @@ ggsave(outF,height = 9,width = 12)
 
 table(data_for_evaluation$actionability.summary,data_for_evaluation$cancerTypeMatch)
 
-
-
