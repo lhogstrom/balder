@@ -4,10 +4,12 @@ library(DBI)
 library(RSQLite)
 library(ggrepel)
 library(ggplot2)
+library(ggalluvial)
 
 ### connect to result DB and get variants
+outDir <- "../../output/clinical_annotation_matching_20240412"
 bDir <- "../../data/processed/balderResultsDb"
-dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240311.sqlite")
+dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
 
 # load clinical annotations
@@ -31,7 +33,11 @@ print(dim(poVariants))
 # load sample info for observed variants
 sampleInfoCompiled <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM harmonizedSampleInfo')
 sampleInfoCompiled[is.na(sampleInfoCompiled$SAMPLE_TYPE),"sampleInfoCompiled"] <- "Unspecified"
-print(dim(sampleInfoCompiled))
+#compile hartwig and genie seq or report to death
+sampleInfoCompiled$INT_Seq_or_Biopsy_To_Death <- sampleInfoCompiled$INT_Biopsy_To_Death
+iNonNullSeqDeath <- !is.na(sampleInfoCompiled[,"INT_SEQ_TO_DEATH"])
+sampleInfoCompiled[iNonNullSeqDeath,"INT_Seq_or_Biopsy_To_Death"] <- sampleInfoCompiled[iNonNullSeqDeath,"INT_SEQ_TO_DEATH"]
+
 
 otCodeCols <- c("ot_code", "ot_name", "Highest_Non_Null_Level", "oncotree_level",
                 "level_1_disease", "ot_code_level_1",
@@ -263,8 +269,6 @@ RSQLite::dbDisconnect(harmonizedDb)
 ##############################
 ### reporting and analysis ###
 ##############################
-
-outDir <- "../../output/clinical_annotation_matching_20240402"
 
 ### Cancer Type match summary plots - all samples
 
@@ -960,3 +964,79 @@ ggsave(outF,height = 9,width = 12)
 
 table(data_for_evaluation$actionability.summary,data_for_evaluation$cancerTypeMatch)
 
+#####################################
+### sequencing or report to death ###
+#####################################
+
+# compare GENIE to Hartwig 
+outF <-  paste0(outDir,"/hartwig_vs_aacr_time_to_death.pdf")
+ggplot(sampleInfoCompiled,aes(x=INT_Seq_or_Biopsy_To_Death,fill=SourceStudy))+
+  geom_density(alpha=.4)+
+  theme_bw()+
+  xlim(-500,2000)+
+  ggtitle(paste0("Infered days between biopsy or sequencing \nreport and death"))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 6)
+
+outF <-  paste0(outDir,"/hartwig_vs_aacr_time_to_death_sample_type.pdf")
+iMetPrim = (sampleInfoCompiled$SAMPLE_TYPE=="Primary" | sampleInfoCompiled$SAMPLE_TYPE=="Metastasis") & !is.na(sampleInfoCompiled$SAMPLE_TYPE)
+ggplot(sampleInfoCompiled[iMetPrim,],aes(x=INT_Seq_or_Biopsy_To_Death,fill=SourceStudy))+
+  geom_density(alpha=.4)+
+  facet_grid(SAMPLE_TYPE~.)+
+  theme_bw()+
+  xlim(-500,2000)+
+  ggtitle(paste0("Infered days between biopsy or sequencing \nreport and death"))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 6)
+
+### prognostic
+iPrognosticSubset <- aa.genome.representative$actionability.summary == "Prognostic" &  aa.genome.representative$cancerTypeMatch == T
+prognosticRepVars <- aa.genome.representative[iPrognosticSubset,]
+
+# which samples have a prognostic marker: high conf, low, conf
+prognosticRepCnts <- aa.genome.representative %>% 
+  dplyr::group_by(Tumor_Sample_Barcode) %>%
+  dplyr::summarise(nVariants=n(),
+                   nPrognosticVars=sum(actionability.summary == "Prognostic"),
+                   nPrognosticHighConfVars=sum((actionability.summary == "Prognostic") & (clinical.evidence.summary=="High Confidence")),
+                   nPrognosticLowConfVarssum=sum((actionability.summary == "Prognostic") & (clinical.evidence.summary=="Lower Confidence")))
+### to-do: direction needed for prognostic prediction
+
+
+
+iProgMarkers <- prognosticRepCnts$nPrognosticVars > 0
+sampleInfoCompiled$hasPrognosticMarker <- sampleInfoCompiled$SAMPLE_ID %in% prognosticRepCnts[iProgMarkers,"Tumor_Sample_Barcode"][[1]]
+
+outF <-  paste0(outDir,"/hartwig_vs_aacr_time_to_death_sample_type.pdf")
+iMetPrim = (sampleInfoCompiled$SAMPLE_TYPE=="Primary" | sampleInfoCompiled$SAMPLE_TYPE=="Metastasis") & !is.na(sampleInfoCompiled$SAMPLE_TYPE) & !is.na(sampleInfoCompiled$INT_Seq_or_Biopsy_To_Death)
+ggplot(sampleInfoCompiled[iMetPrim,],aes(x=INT_Seq_or_Biopsy_To_Death,fill=hasPrognosticMarker))+
+  geom_density(alpha=.4)+
+  facet_grid(SourceStudy~.)+
+  theme_bw()+
+  xlim(-500,2000)+
+  ggtitle(paste0("Infered days between biopsy or sequencing \nreport and death"))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 6)
+
+
+#######################################################
+### Sankey diagram of biomarker to drug assignments ###
+#######################################################
+
+# data <- data.frame(
+#   id = 1:4,
+#   stage1 = c("A", "A", "B", "B"),
+#   stage2 = c("C", "D", "D", "C"),
+#   stage3 = c("E", "E", "F", "F"),
+#   weight = c(1, 2, 1, 1)
+# )
+# 
+# ggplot(data = data,
+#        aes(axis1 = stage1, axis2 = stage2, axis3 = stage3, y = weight)) +
+#   geom_alluvium(aes(fill = stage1)) +  # Fill color based on the first stage
+#   geom_stratum() +  # Add stratum to show stages
+#   geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +  # Add text labels
+#   theme_minimal() +  # Use a minimal theme
+#   ggtitle("Sankey Diagram with Three Stages")  # Add a title
+
+### Sankey diagram of cancer type --> biomarker --> prognostic assignment

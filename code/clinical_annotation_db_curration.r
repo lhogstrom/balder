@@ -160,6 +160,12 @@ moa$ReferenceOrTrialID <- moa$citation
 moa$Disease <- moa$disease
 moa$TrialID <- NA
 moa$Phase <- NA
+moa$clinical_significance <- NA
+isFavorable <- (moa$favorable_prognosis == 1) & !is.na(moa$favorable_prognosis)
+moa[isFavorable,"clinical_significance"] <- "Better Outcome"
+isNotFavorable <- (moa$favorable_prognosis == 0) & !is.na(moa$favorable_prognosis)
+moa[isNotFavorable,"clinical_significance"] <- "Poor Outcome"
+
 moa$Drugs <- moa$therapy_name
 moa$AberrationsLabelsMod <- NA
 moa <- moa %>%
@@ -252,14 +258,20 @@ table(moa$MskCancerType,exclude=NULL)
 # what fraction of entries are still missing MSK cancer type assignment
 print(sum(is.na(moa$MskCancerType))/dim(moa)[[1]])
 
-#####################
-### MOA and CIVIC ###
-#####################
+##########################
+### MOA and CIVIC join ###
+##########################
 
+# filter out only positive evidence entries
+civicSelectedEntries <- clinical %>%
+  filter(!evidence_direction=="Does Not Support",
+         !clinical_significance=="N/A")
+
+# select columns and perform join
 matchCols <- c("source","gene","AAChange","Drugs","FDAApproved","ReferenceOrTrialID","EvidenceText","Phase",
                "Indicated","Disease", "oncotree_term", "oncotree_code",
-               "chromosome","pos","ref","alt","MskCancerType","actionability.summary","clinical.evidence.summary")
-dbRules <- rbind(moa[,matchCols],clinical[,matchCols]) %>%
+               "chromosome","pos","ref","alt","MskCancerType","clinical_significance","actionability.summary","clinical.evidence.summary")
+dbRules <- rbind(moa[,matchCols],civicSelectedEntries[,matchCols]) %>%
   dplyr::mutate(EvidenceText=gsub("\t","-",EvidenceText)) %>%
   dplyr::mutate(ReferenceOrTrialID=gsub("\t","-",ReferenceOrTrialID))
 outF <-  paste0(outDir,"/civic_MOA_clinically_actionable_list.txt")
@@ -314,11 +326,11 @@ outDbName2 <- paste0(bDir,"/balder-compiled-raw-data-v",timestamp,".sqlite")
 #rawDataDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName2)
 
 # Harmonized table
-RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICRuleEntries", dbRules)
-RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByGenomicCoordinate", dbGenome)
-RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByAAChange", dbAlteration)
-RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICOtherAlterations", dbOtherAlt)
-RSQLite::dbWriteTable(harmonizedDb, "OncoTreeCodeHierarchy", ot_code_full)
+RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICRuleEntries", dbRules, overwrite =T)
+RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByGenomicCoordinate", dbGenome, overwrite =T)
+RSQLite::dbWriteTable(harmonizedDb, "actionableSNVsByAAChange", dbAlteration, overwrite =T)
+RSQLite::dbWriteTable(harmonizedDb, "MoaCiVICOtherAlterations", dbOtherAlt, overwrite =T)
+RSQLite::dbWriteTable(harmonizedDb, "OncoTreeCodeHierarchy", ot_code_full, overwrite =T)
 
 ### Disconnect from SQL db
 RSQLite::dbDisconnect(harmonizedDb)

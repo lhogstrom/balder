@@ -10,7 +10,7 @@ outDir <- "../../output/actionability_db_curration_20231220"
 ################################
 
 bDir <- "../../data/processed/balderResultsDb"
-timestamp <- format(Sys.time(), "%Y%m%d")
+timestamp <- format(Sys.time(), "%Y%m%d") 
 
 # output db for harmonized data
 outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
@@ -30,10 +30,11 @@ harmSampleCols <- c("SAMPLE_ID",
                     "SAMPLE_TYPE",
                     "SAMPLE_TYPE_DETAILED",
                     "SEQ_ASSAY_ID",
-                    "AGE_AT_SEQ_REPORT",
                     "STAGE",
-                    "tumorPurity",
+                    "TUMOR_PURITY",
                     "INT_Biopsy_To_Death",
+                    "AGE_AT_SEQ_REPORT",
+                    "DEAD",
                     "INT_SEQ_TO_DEATH",
                     "INT_SEQ_TO_CONTACT",
                     "SourceStudy")
@@ -61,12 +62,14 @@ hMeta$INT_Biopsy_To_Death <- deathDateNum - biopsyDateNum
 # sample columns needed: cancer type, met/primary
 hSampleSubset <- hMeta[,c("sampleId","primaryTumorLocation","primaryTumorType","tumorPurity","INT_Biopsy_To_Death")]
 colnames(hSampleSubset) <- c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","tumorPurity","INT_Biopsy_To_Death")
+hSampleSubset$TUMOR_PURITY <- hSampleSubset$tumorPurity*0.01
 hSampleSubset$SAMPLE_TYPE <- "Metastasis" # assume all samples are met from Hartwig
 hSampleSubset$SourceStudy <- "Hartwig-data"
 hSampleSubset$ONCOTREE_CODE <- NA # no code listed by authors
 hSampleSubset$SAMPLE_TYPE_DETAILED <- NA
 hSampleSubset$SEQ_ASSAY_ID <- NA
 hSampleSubset$AGE_AT_SEQ_REPORT <- NA
+hSampleSubset$DEAD <- NA
 hSampleSubset$STAGE <- NA
 hSampleSubset$INT_SEQ_TO_DEATH <- NA
 hSampleSubset$INT_SEQ_TO_CONTACT <- NA
@@ -78,75 +81,82 @@ inFile <- "../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt"
 patient.msk <- read.csv(inFile,sep="\t")
 RSQLite::dbWriteTable(rawDataDb, "mskMetadata", patient.msk)
 
-mskSampleSubset <- patient.msk[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
+mskSampleSubset <- patient.msk[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE","TUMOR_PURITY")]
 mskSampleSubset$SourceStudy <- "MSK-IMPACT-2017-data"
-RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", mskSampleSubset,append=T)
+mskSampleSubset$TUMOR_PURITY <- mskSampleSubset$TUMOR_PURITY*0.01
+mskSampleSubset$SAMPLE_TYPE_DETAILED <- NA
+mskSampleSubset$SEQ_ASSAY_ID <- NA
+mskSampleSubset$AGE_AT_SEQ_REPORT <- NA
+mskSampleSubset$STAGE <- NA
+mskSampleSubset$DEAD <- NA
+mskSampleSubset$INT_Biopsy_To_Death <- NA
+mskSampleSubset$INT_SEQ_TO_DEATH <- NA
+mskSampleSubset$INT_SEQ_TO_CONTACT <- NA
+
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", mskSampleSubset[,harmSampleCols],append=T)
 
 ### PANCAN
 inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt"
 pancanSampInfo <- read.csv(inFile,sep="\t",skip = 4)
 RSQLite::dbWriteTable(rawDataDb, "pancanMetadata", pancanSampInfo)
 
-pancanSampleSubset <- pancanSampInfo[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE")]
+pancanSampleSubset <- pancanSampInfo[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE","STAGE","PURITY")]
 pancanSampleSubset$SourceStudy <- "PANCAN-WGS-data"
+pancanSampleSubset$TUMOR_PURITY <- pancanSampleSubset$PURITY
 pancanSampleSubset$SAMPLE_TYPE_DETAILED <- NA
 pancanSampleSubset$SEQ_ASSAY_ID <- NA
 pancanSampleSubset$AGE_AT_SEQ_REPORT <- NA
-pancanSampleSubset$tumorPurity <- NA
+pancanSampleSubset$DEAD <- NA
+pancanSampleSubset$INT_Biopsy_To_Death <- NA
+pancanSampleSubset$INT_SEQ_TO_DEATH <- NA
+pancanSampleSubset$INT_SEQ_TO_CONTACT <- NA
 
-RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", pancanSampleSubset,append=T)
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", pancanSampleSubset[,harmSampleCols],append=T)
 
 ### AACR GENIE
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
 patient.genie <- read.csv(inFile,sep="\t",skip=4)
 RSQLite::dbWriteTable(rawDataDb, "GeniePatientData", patient.genie)
 
-### detailed column definitions for patient data
-# gpatientCols <- c("Patient.Identifier", 
-#                   "Sex", 
-#                   "Primary.Race", 
-#                   "Ethnicity.Category", 
-#                   "Center", 
-#                   "Interval.in.days.from.DOB.to.date.of.last.contact",
-#                   "Interval.in.days.from.DOB.to.DOD", 
-#                   "Year.of.last.contact",                
-#                   "Vital.Status",                            
-#                   "Year.of.death")
-
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt"
 sample.genie <- read.csv(inFile,sep="\t",skip=4)
 RSQLite::dbWriteTable(rawDataDb, "GenieClinicalSampleData", sample.genie)
 
-sample.genie$SourceStudy <- "AACR-GENIE-data"
-sample.genie$STAGE <- NA
-genieSampleSubset <- sample.genie[,harmSampleCols]
-
-RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", genieSampleSubset,append=T)
-
-
 ### join sample data to patient data and create inferred variables
-# sample.genie$AGE_AT_SEQ_REPORT_NUMERIC <- as.numeric(sample.genie$AGE_AT_SEQ_REPORT)
-# sample.genie$INF_AGE_SEQ_REPORT_DAYS <- (sample.genie$AGE_AT_SEQ_REPORT_NUMERIC * 365) + 183
-# samplePatient <- sample.genie %>%
-#   dplyr::left_join(patient.genie,by="PATIENT_ID") %>%
-#   dplyr::mutate(
-#     INT_SEQ_TO_DEATH = if_else(
-#       !is.na(as.numeric(INT_DOD)) & !is.na(as.numeric(INF_AGE_SEQ_REPORT_DAYS)),
-#       as.numeric(INT_DOD) - INF_AGE_SEQ_REPORT_DAYS,
-#       NA  # Assign NA of type double if conditions are not met
-#     ),
-#     INT_SEQ_TO_CONTACT = if_else(
-#       !is.na(as.numeric(IINT_CONTACTNT_DOD)) & !is.na(as.numeric(INF_AGE_SEQ_REPORT_DAYS)),
-#       as.numeric(INT_CONTACT) - INF_AGE_SEQ_REPORT_DAYS,
-#       NA  # Assign NA of type double if conditions are not met
-#     )
-#   )
-# 
-# c("AGE_AT_SEQ_REPORT",
-#   "DEAD",
-#   "INT_SEQ_TO_DEATH",
-#   "INT_SEQ_TO_CONTACT")
+sample.genie$AGE_AT_SEQ_REPORT_NUMERIC <- as.numeric(sample.genie$AGE_AT_SEQ_REPORT)
+sample.genie$INF_AGE_SEQ_REPORT_DAYS <- (sample.genie$AGE_AT_SEQ_REPORT_NUMERIC * 365) + 183
+samplePatient <- sample.genie %>%
+  dplyr::left_join(patient.genie,by="PATIENT_ID") %>%
+  dplyr::mutate(
+    INT_SEQ_TO_DEATH = if_else(
+      !is.na(as.numeric(INT_DOD)) & !is.na(as.numeric(INF_AGE_SEQ_REPORT_DAYS)),
+      as.numeric(INT_DOD) - INF_AGE_SEQ_REPORT_DAYS,
+      NA  # Assign NA of type double if conditions are not met
+    ),
+    INT_SEQ_TO_CONTACT = if_else(
+      !is.na(as.numeric(INT_CONTACT)) & !is.na(as.numeric(INF_AGE_SEQ_REPORT_DAYS)),
+      as.numeric(INT_CONTACT) - INF_AGE_SEQ_REPORT_DAYS,
+      NA  # Assign NA of type double if conditions are not met
+    )
+  )
 
+genieSampleSubset <- samplePatient[,c("SAMPLE_ID",
+                                      "CANCER_TYPE",
+                                      "CANCER_TYPE_DETAILED",
+                                      "ONCOTREE_CODE",
+                                      "SAMPLE_TYPE",
+                                      "SAMPLE_TYPE_DETAILED",
+                                      "SEQ_ASSAY_ID",
+                                      "AGE_AT_SEQ_REPORT",
+                                      "DEAD",
+                                      "INT_SEQ_TO_DEATH",
+                                      "INT_SEQ_TO_CONTACT")]
+genieSampleSubset$SourceStudy <- "AACR-GENIE-data"
+genieSampleSubset$STAGE <- NA
+genieSampleSubset$TUMOR_PURITY <- NA
+genieSampleSubset$INT_Biopsy_To_Death <- NA
+
+RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", genieSampleSubset[,harmSampleCols],append=T)
 
 # to-do: compile minimal patient columns across data sets: age, gender, race, ethnicity 
 
@@ -197,6 +207,12 @@ RSQLite::dbWriteTable(rawDataDb, "Mc3PatientVarients", mc3)
 inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_mutations_extended.txt"
 genie <- read.csv(inFile,sep="\t")
 RSQLite::dbWriteTable(rawDataDb, "GeniePatientVarients", genie)
+
+### Hartwig
+inFile <- "../../data/Hartwig/data/output_v4/hartwig_clinically_actionable_pcgr_entries.txt"
+hartwig.pcgr <- read.csv(inFile,sep="\t")
+#RSQLite::dbWriteTable(rawDataDb, "GeniePatientVarients", genie)
+
 
 ###############################################################
 ### write common variant columns for each dataset to SQLite ###
