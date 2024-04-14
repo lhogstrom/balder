@@ -28,6 +28,10 @@ poVariants<- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVar
   dplyr::mutate(AAChangeObserved=stringr::str_replace(HGVSp_Short,"p.", ""),
                 MAF=100*(t_alt_count / (t_ref_count+t_alt_count)))
 poVariants$balderVariantID <- seq(1,dim(poVariants)[[1]])
+# replace MAF with TVAF for hartwig variants
+iHartwig <- poVariants$SourceStudy == "Hartwig-data"
+poVariants[iHartwig,"MAF"] <- poVariants[iHartwig,"TVAF"] 
+
 print(dim(poVariants))
 
 # load sample info for observed variants
@@ -51,9 +55,9 @@ otCodeCols <- c("ot_code", "ot_name", "Highest_Non_Null_Level", "oncotree_level"
 svCompiled <- poVariants %>%
   dplyr::inner_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
                    by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>% # exclude samples that do not have any sample information
-  dplyr::left_join(ot_code_full[,otCodeCols],by=c("ONCOTREE_CODE"="ot_code")) # join ot_codes to annotation
+  dplyr::left_join(ot_code_full[,otCodeCols],by=c("ONCOTREE_CODE"="ot_code")) %>% # join ot_codes to annotation
+  dplyr::filter(!SAMPLE_TYPE == "Cell line")
 print(dim(svCompiled))
-table(svCompiled$SAMPLE_TYPE,exclude=NULL)
 
 ######################################
 ### Build primary reporting tables ###
@@ -989,34 +993,203 @@ ggplot(sampleInfoCompiled[iMetPrim,],aes(x=INT_Seq_or_Biopsy_To_Death,fill=Sourc
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 6,width = 6)
 
-### prognostic
-iPrognosticSubset <- aa.genome.representative$actionability.summary == "Prognostic" &  aa.genome.representative$cancerTypeMatch == T
-prognosticRepVars <- aa.genome.representative[iPrognosticSubset,]
+####################################
+### aggregate prognostic markers ###
+####################################
 
 # which samples have a prognostic marker: high conf, low, conf
 prognosticRepCnts <- aa.genome.representative %>% 
+  dplyr::filter(cancerTypeMatch==T) %>%
   dplyr::group_by(Tumor_Sample_Barcode) %>%
   dplyr::summarise(nVariants=n(),
                    nPrognosticVars=sum(actionability.summary == "Prognostic"),
+                   nMarkerBetterOutcome=sum(clinical_significance == "Better Outcome"),
+                   nMarkerPoorOutcome=sum(clinical_significance == "Poor Outcome"),
                    nPrognosticHighConfVars=sum((actionability.summary == "Prognostic") & (clinical.evidence.summary=="High Confidence")),
                    nPrognosticLowConfVarssum=sum((actionability.summary == "Prognostic") & (clinical.evidence.summary=="Lower Confidence")))
-### to-do: direction needed for prognostic prediction
 
 
+# some samples have both poor outcome and better outcome prognostic markers
+table(prognosticRepCnts$nMarkerBetterOutcome,prognosticRepCnts$nMarkerPoorOutcome)
 
+# make prognostic marker assignments by sample
 iProgMarkers <- prognosticRepCnts$nPrognosticVars > 0
 sampleInfoCompiled$hasPrognosticMarker <- sampleInfoCompiled$SAMPLE_ID %in% prognosticRepCnts[iProgMarkers,"Tumor_Sample_Barcode"][[1]]
 
+sampleInfoCompiled$prognosticMarkerType <- "Prognostic Marker Unspecified"
+iBetterProgMarkers <- prognosticRepCnts$nMarkerBetterOutcome > 0
+iBetter <- sampleInfoCompiled$SAMPLE_ID %in% prognosticRepCnts[iBetterProgMarkers,"Tumor_Sample_Barcode"][[1]]
+sampleInfoCompiled[iBetter,"prognosticMarkerType"] <- "Better Outcome Prognostic Marker"
+iPoorProgMarkers <- prognosticRepCnts$nMarkerPoorOutcome > 0
+iPoor <- sampleInfoCompiled$SAMPLE_ID %in% prognosticRepCnts[iPoorProgMarkers,"Tumor_Sample_Barcode"][[1]]
+sampleInfoCompiled[iPoor,"prognosticMarkerType"] <- "Poor Outcome Prognostic Marker"
+sampleInfoCompiled[!sampleInfoCompiled$hasPrognosticMarker,"prognosticMarkerType"] <- "No Prognostic Marker"
+  
 outF <-  paste0(outDir,"/hartwig_vs_aacr_time_to_death_sample_type.pdf")
 iMetPrim = (sampleInfoCompiled$SAMPLE_TYPE=="Primary" | sampleInfoCompiled$SAMPLE_TYPE=="Metastasis") & !is.na(sampleInfoCompiled$SAMPLE_TYPE) & !is.na(sampleInfoCompiled$INT_Seq_or_Biopsy_To_Death)
-ggplot(sampleInfoCompiled[iMetPrim,],aes(x=INT_Seq_or_Biopsy_To_Death,fill=hasPrognosticMarker))+
+ggplot(sampleInfoCompiled[iMetPrim,],aes(x=INT_Seq_or_Biopsy_To_Death,fill=prognosticMarkerType))+
   geom_density(alpha=.4)+
   facet_grid(SourceStudy~.)+
   theme_bw()+
   xlim(-500,2000)+
   ggtitle(paste0("Infered days between biopsy or sequencing \nreport and death"))+
   theme(plot.title = element_text(hjust = 0.5))
-ggsave(outF,height = 6,width = 6)
+ggsave(outF,height = 6,width = 8)
+
+####################################
+### specific prognostic markers ###
+####################################
+
+prognosticTypeMutCnts <- aa.genome.representative %>%
+  dplyr::filter(cancerTypeMatch==T,
+                actionability.summary == "Prognostic") %>%
+  dplyr::group_by(ONCOTREE_CODE,CANCER_TYPE,gene,AAChangeObserved,clinical_significance) %>%
+  dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n))
+outF <- paste0(ProgOutDir,"/prognostic_variant_frequency_rank.csv")
+write.csv(prognosticTypeMutCnts,outF)
+
+prognosticTypeCnts <- aa.genome.representative %>%
+  dplyr::filter(cancerTypeMatch==T,
+                actionability.summary == "Prognostic") %>%
+  dplyr::group_by(CANCER_TYPE,gene,clinical_significance) %>%
+  dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n))
+
+ProgOutDir <- "../../output/clinical_annotation_matching_20240412/prognostic_analysis_restricted_cancer_types"
+### create comparisons of distribution types
+testResProgDf <- data.frame()
+
+#otCodes <- unique(prognosticTypeCnts$ONCOTREE_CODE)
+ctTypes <- unique(prognosticTypeCnts$CANCER_TYPE)
+progGenes <- unique(prognosticTypeCnts$gene)
+progSig <- unique(prognosticTypeCnts$clinical_significance)
+
+for (iX in rownames(prognosticTypeCnts)) {
+  print(iX)
+  ctType <- prognosticTypeCnts[iX,"CANCER_TYPE"][[1]]
+  progGene <- prognosticTypeCnts[iX,"gene"][[1]]
+  progSigDir <- prognosticTypeCnts[iX,"clinical_significance"][[1]]
+  print(paste(ctType,"-",progGene,"-",progSigDir))
+  
+  # select variants with the prognostic markers
+  xVarSubset <- aa.genome.representative %>%
+    dplyr::filter(cancerTypeMatch==T,
+                  actionability.summary == "Prognostic",
+                  CANCER_TYPE == ctType,
+                  gene == progGene,
+                  clinical_significance == progSigDir)
+  # all other variants for the cancer type
+  yVarSubset <- aa.genome.representative %>%
+    dplyr::filter(CANCER_TYPE == ctType,
+                  !Tumor_Sample_Barcode %in% xVarSubset$Tumor_Sample_Barcode)
+  
+  # select the samples with the variants (and the metric)
+  xSubSetSamples <- xVarSubset %>%
+    dplyr::group_by(Tumor_Sample_Barcode) %>%
+    dplyr::filter(dplyr::row_number()==1)
+  
+  ySubSetSamples <- yVarSubset %>%
+    dplyr::group_by(Tumor_Sample_Barcode) %>%
+    dplyr::filter(dplyr::row_number()==1)
+  
+  xSize <- dim(xSubSetSamples)[[1]]
+  ySize <- dim(ySubSetSamples)[[1]]
+  
+  # skip statsitical test if there are fewer than N exemplars in a given group
+  if ((xSize < 30) | (ySize < 30)) {
+    next
+  }
+  
+  # create vectors of MAF values
+  xSeqToDeathTmp <- xSubSetSamples$INT_Seq_or_Biopsy_To_Death
+  ySeqToDeathTmp <- ySubSetSamples$INT_Seq_or_Biopsy_To_Death
+  
+  ixNa <- is.na(xSeqToDeathTmp)
+  iyNa <- is.na(ySeqToDeathTmp)
+  ixInf <- is.infinite(xSeqToDeathTmp)
+  iyInf <- is.infinite(ySeqToDeathTmp)
+  
+  # remove nulls and Inf from vectors
+  xSeqToDeathVec <- xSeqToDeathTmp[!ixNa & !ixInf]
+  ySeqToDeathVec <- ySeqToDeathTmp[!iyNa & !iyInf]
+  
+  # Organize data for density plot
+  mafDf <- data.frame(value=c(xSeqToDeathVec,ySeqToDeathVec),
+                      condition="sample has prognostic marker")
+  iC2 <- seq((length(xSeqToDeathVec)+1),dim(mafDf)[[1]])
+  mafDf[iC2,"condition"] <- "no prognostic marker in sample"
+  
+  # Calculate the KS statistic and the point of maximum difference
+  ks_test <- ks.test(xSeqToDeathVec, ySeqToDeathVec)
+  ks_stat <- ks_test$statistic
+  xx <- seq(0,100,.1)
+  diffs <- abs(ecdf(xSeqToDeathVec)(xx) - ecdf(ySeqToDeathVec)(xx))
+  ks_value <- xx[which.max(diffs)]
+  
+  outF <-  paste0(ProgOutDir,"/days_from_seq_to_death_",ctType,"_",progGene,"_",progSigDir,".pdf")
+  ggplot(mafDf,aes(x=value,fill=condition))+
+    geom_density(alpha=.4)+
+    theme_bw()+
+    geom_vline(xintercept = ks_value, linetype = "dotted", color = "black", size = 1)+
+    xlab("Days between sequencing and death")+
+    ggtitle(paste0("Death outcome for ",ctType,"\n with prognostic ",progGene," mutation \n expected direction: ",progSigDir))+
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(outF,height = 6,width = 6)
+  
+  # perform wilcox test
+  wrs.twosided <- wilcox.test(xSeqToDeathVec,
+                              ySeqToDeathVec,
+                              alternative = "two.sided",
+                              exact=FALSE,
+                              conf.int=TRUE,
+                              paired=FALSE)
+  
+  ## create outputs
+  c1_temp_summary <- summary(xSeqToDeathVec)
+  c2_temp_summary <- summary(ySeqToDeathVec)
+  
+  # Create a row to append to the dataframe
+  new_row <- data.frame(
+    # condition info
+    cancer_type = ctType,
+    prognostic_marker_gene=progGene,
+    expected_significance=progSigDir,
+    # summary stats condition 1
+    c1_min = c1_temp_summary[[1]],
+    c1_first_quartile = c1_temp_summary[[2]],
+    c1_median = c1_temp_summary[[3]],
+    c1_mean = c1_temp_summary[[4]],
+    c1_third_quartile = c1_temp_summary[[5]],
+    c1_max = c1_temp_summary[[6]],
+    # summary stats condition 2
+    c2_min = c2_temp_summary[[1]],
+    c2_first_quartile = c2_temp_summary[[2]],
+    c2_median = c2_temp_summary[[3]],
+    c2_mean = c2_temp_summary[[4]],
+    c2_third_quartile = c2_temp_summary[[5]],
+    c2_max = c2_temp_summary[[6]],
+    # wilcox results
+    wilcox_p_value = wrs.twosided$p.value,
+    wilcox_statistic = wrs.twosided$statistic[[1]],
+    wilcox_estimate = wrs.twosided$estimate[[1]]
+  )
+  
+  # Append the new row to the summary dataframe
+  testResProgDf <- rbind(testResProgDf, new_row)
+}
+
+# Apply FDR correction
+testResProgDf$p_adjusted_wilcox <- p.adjust(testResProgDf$wilcox_p_value, method = "fdr")
+
+testResProgDf <- testResProgDf %>%
+  dplyr::arrange(wilcox_p_value) %>%
+  dplyr::mutate(significant = p_adjusted_wilcox < 0.05,
+                c1_c2_median_MAF_difference = c1_median - c2_median)
+outF <- paste0(ProgOutDir,"/prognostic_markers_days_from_seq_to_death_wilcox_test.csv")
+write.csv(testResProgDf,outF)
+
+
 
 
 #######################################################
