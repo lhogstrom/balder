@@ -30,7 +30,7 @@ poVariants<- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVar
 poVariants$balderVariantID <- seq(1,dim(poVariants)[[1]])
 # replace MAF with TVAF for hartwig variants
 iHartwig <- poVariants$SourceStudy == "Hartwig-data"
-poVariants[iHartwig,"MAF"] <- poVariants[iHartwig,"TVAF"] 
+poVariants[iHartwig,"MAF"] <- poVariants[iHartwig,"TVAF"]*100
 
 print(dim(poVariants))
 
@@ -676,7 +676,7 @@ write.csv(df,"../../output/actionability_db_curration_20231220/actionability_res
 ##############################################
 
 
-iMafOver100 <- annotated.and.non.annotated$MAF > 100
+iMafOver100 <- (annotated.and.non.annotated$MAF > 100) | is.na(annotated.and.non.annotated$MAF)
 outF <-  paste0(outDir,"/MAF_distribution_clinically_actionable_vs_non_actionable.pdf")
 ggplot(annotated.and.non.annotated[!iMafOver100,],aes(x=MAF,fill=clinical_annotation_status))+
   #geom_histogram(alpha=.4)+
@@ -688,6 +688,27 @@ ggplot(annotated.and.non.annotated[!iMafOver100,],aes(x=MAF,fill=clinical_annota
   scale_fill_brewer(palette="Set1",drop=FALSE)+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 8,width = 7)
+
+# repeat plot by cancer type
+rownames(ot_code_full) <- ot_code_full$ot_code
+
+for (cType in TopPrimTissue) {
+  cTypeName <- ot_code_full[cType,"ot_name"]
+  print(cTypeName)
+  iCtypeMatch <- (annotated.and.non.annotated$ONCOTREE_CODE == cType) & !is.na(annotated.and.non.annotated$ONCOTREE_CODE)
+  outF <-  paste0(outDir,"/cancer_type_MAF_distribution_clinically_actionable_vs_non_actionable_",cType,".pdf")
+  ggplot(annotated.and.non.annotated[!iMafOver100 & iCtypeMatch,],aes(x=MAF,fill=clinical_annotation_status))+
+    #geom_histogram(alpha=.4)+
+    geom_density(alpha=.4)+
+    theme_bw()+
+    facet_grid(SourceStudy~.,scale="free_y",)+
+    xlab("MAF (%)")+
+    ggtitle(paste0(cTypeName,"\n MAF of unrestricted annotated and non-annotated variants \n in source studies"))+
+    scale_fill_brewer(palette="Set1",drop=FALSE)+
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(outF,height = 8,width = 7)
+}
+
 
 ### Examine MAF distributions ###
 
@@ -1036,6 +1057,23 @@ ggplot(sampleInfoCompiled[iMetPrim,],aes(x=INT_Seq_or_Biopsy_To_Death,fill=progn
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 6,width = 8)
 
+# plot only AACR data without "unspecified prog markers
+outF <-  paste0(outDir,"/hartwig_vs_aacr_time_to_death_sample_type_v2.pdf")
+iProgSelect = (sampleInfoCompiled$SAMPLE_TYPE=="Primary" | sampleInfoCompiled$SAMPLE_TYPE=="Metastasis") & 
+  !is.na(sampleInfoCompiled$SAMPLE_TYPE) & 
+  !is.na(sampleInfoCompiled$INT_Seq_or_Biopsy_To_Death) &
+  !sampleInfoCompiled$SourceStudy == "Hartwig-data" &
+  !sampleInfoCompiled$prognosticMarkerType == "Prognostic Marker Unspecified"
+ggplot(sampleInfoCompiled[iProgSelect,],aes(x=INT_Seq_or_Biopsy_To_Death,fill=prognosticMarkerType))+
+  geom_density(alpha=.4)+
+  facet_grid(SourceStudy~.)+
+  theme_bw()+
+  xlim(-500,2000)+
+  ggtitle(paste0("Infered days between biopsy or sequencing \nreport and death"))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 8)
+
+
 ####################################
 ### specific prognostic markers ###
 ####################################
@@ -1191,25 +1229,100 @@ write.csv(testResProgDf,outF)
 
 
 
+outF <-  paste0(outDir,"/prognostic_markers_int_to_death_qq_plot_raw_p_values.pdf")
+pdf(outF)
+qqplot(-log10(ppoints(length(testResProgDf$wilcox_p_value))), 
+       -log10(sort(testResProgDf$wilcox_p_value)), 
+       xlab = "Expected -log10(p-values)", 
+       ylab = "Observed -log10(p-values)", 
+       main = "QQ-plot of p-values")
+abline(0, 1, col = "red")  # Line y = x for reference
+ggsave(outF,height = 8,width = 12)
+dev.off()
+
+# QQ-plot with FDR-corrected p-values
+outF <-  paste0(outDir,"/prognostic_markers_int_to_death_qq_plot_fdr_corrected_p_values.pdf")
+pdf(outF)
+qqplot(-log10(ppoints(length(testResProgDf$p_adjusted_wilcox))), 
+       -log10(sort(testResProgDf$p_adjusted_wilcox)), 
+       xlab = "Expected -log10(FDR-corrected p-values)", 
+       ylab = "Observed -log10(FDR-corrected p-values)", 
+       main = "QQ-plot of FDR-corrected p-values")
+abline(0, 1, col = "blue")  # Line y = x for reference
+dev.off()
 
 #######################################################
 ### Sankey diagram of biomarker to drug assignments ###
 #######################################################
 
-# data <- data.frame(
-#   id = 1:4,
-#   stage1 = c("A", "A", "B", "B"),
-#   stage2 = c("C", "D", "D", "C"),
-#   stage3 = c("E", "E", "F", "F"),
-#   weight = c(1, 2, 1, 1)
-# )
-# 
-# ggplot(data = data,
-#        aes(axis1 = stage1, axis2 = stage2, axis3 = stage3, y = weight)) +
-#   geom_alluvium(aes(fill = stage1)) +  # Fill color based on the first stage
-#   geom_stratum() +  # Add stratum to show stages
-#   geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +  # Add text labels
-#   theme_minimal() +  # Use a minimal theme
-#   ggtitle("Sankey Diagram with Three Stages")  # Add a title
+### Sankey data product - drung
+aa.genome.representative$AAChangeStr <- paste0(aa.genome.representative$gene,"-",aa.genome.representative$AAChangeObserved)
+SankeyDrugCnts <- aa.genome.representative %>%
+  dplyr::filter(cancerTypeMatch==T,
+                actionability.summary == "Predictive therapy actionability") %>%
+  dplyr::group_by(CANCER_TYPE,gene,AAChangeStr,Drugs) %>%
+  dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n))
+outF <- paste0(outDir,"/sankey_plot_drug_table.csv")
+write.csv(SankeyDrugCnts,outF)
 
-### Sankey diagram of cancer type --> biomarker --> prognostic assignment
+
+outF <-  paste0(outDir,"/sankey_plot_drugs_diagram.pdf")
+ggplot(data = SankeyDrugCnts[seq(1:20),],
+       aes(axis1 = CANCER_TYPE, axis2 = AAChangeStr, axis3 = Drugs, y = n)) +
+  geom_alluvium(aes(fill = CANCER_TYPE)) + 
+  geom_stratum() +  
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +  # Add text labels
+  theme_minimal() +  
+  ggtitle("Top restricted drug matches")+  
+  scale_fill_brewer(palette="Set2",drop=FALSE)+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 12)
+
+
+### Sankey data product - prognosis by AA Change
+SankeyPrognosticCnts <- aa.genome.representative %>%
+  dplyr::filter(cancerTypeMatch==T,
+                actionability.summary == "Prognostic") %>%
+  dplyr::group_by(CANCER_TYPE,gene,AAChangeStr,clinical_significance) %>%
+  dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n))
+outF <- paste0(outDir,"/sankey_plot_prognosis_table.csv")
+write.csv(SankeyPrognosticCnts,outF)
+
+outF <-  paste0(outDir,"/sankey_plot_prognosis_diagram.pdf")
+ggplot(data = SankeyPrognosticCnts[seq(1:20),],
+       aes(axis1 = CANCER_TYPE, axis2 = AAChangeStr, axis3 = clinical_significance, y = n)) +
+  geom_alluvium(aes(fill = CANCER_TYPE)) + 
+  geom_stratum() +  
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +  # Add text labels
+  theme_minimal() +  
+  ggtitle("Top restricted drug matches")+  
+  #scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 12)
+
+### Sankey data product - prognosis by Gene Change
+SankeyPrognosticCntsGene <- aa.genome.representative %>%
+  dplyr::filter(cancerTypeMatch==T,
+                actionability.summary == "Prognostic") %>%
+  dplyr::group_by(CANCER_TYPE,gene,clinical_significance) %>%
+  dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n))
+outF <- paste0(outDir,"/sankey_plot_prognosis_by_gene_table.csv")
+write.csv(SankeyPrognosticCntsGene,outF)
+
+
+outF <-  paste0(outDir,"/sankey_plot_prognosis_by_gene_diagram.pdf")
+ggplot(data = SankeyPrognosticCntsGene[seq(1:15),],
+       aes(axis1 = CANCER_TYPE, axis2 = gene, axis3 = clinical_significance, y = n)) +
+  geom_alluvium(aes(fill = CANCER_TYPE)) + 
+  geom_stratum() +  
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +  # Add text labels
+  theme_minimal() +  
+  ggtitle("Top restricted drug matches")+  
+  #scale_fill_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 10,width = 10)
+
