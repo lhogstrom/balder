@@ -26,7 +26,8 @@ ot_code_full <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM OncoTreeCodeHie
 # load patient observed variants
 poVariants<- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVariantTable') %>%
   dplyr::mutate(AAChangeObserved=stringr::str_replace(HGVSp_Short,"p.", ""),
-                MAF=100*(t_alt_count / (t_ref_count+t_alt_count)))
+                MAF=100*(t_alt_count / (t_ref_count+t_alt_count)),
+                t_alt_plus_ref_count = t_ref_count+t_alt_count)
 poVariants$balderVariantID <- seq(1,dim(poVariants)[[1]])
 # replace MAF with TVAF for hartwig variants
 iHartwig <- poVariants$SourceStudy == "Hartwig-data"
@@ -58,6 +59,30 @@ svCompiled <- poVariants %>%
   dplyr::left_join(ot_code_full[,otCodeCols],by=c("ONCOTREE_CODE"="ot_code")) %>% # join ot_codes to annotation
   dplyr::filter(!SAMPLE_TYPE == "Cell line")
 print(dim(svCompiled))
+
+# Load list of oncokb genes
+inFile <- "../../data/oncokb/cancerGeneList.tsv"
+genesOncokb <- read.csv(inFile,sep="\t")
+
+# filter variants to oncoKB gene list
+# okbCompiledSubset <- svCompiled %>%
+#   dplyr::filter(Hugo_Symbol %in% genesOncokb$Hugo.Symbol) %>%
+#   dplyr::group_by(Hugo_Symbol,
+#                   HGVSp,
+#                   HGVSp_Short,
+#                   ONCOTREE_CODE) %>%
+#   dplyr::summarise(n=dplyr::n()) %>%
+#   dplyr::filter(!HGVSp == "") %>%
+#   dplyr::arrange(desc(n))
+
+oncoKBCols <- c("Hugo_Symbol",
+                "Tumor_Sample_Barcode",
+                "HGVSp",
+                "HGVSp_Short",
+                #"HGVSg",
+                "ONCOTREE_CODE")
+outF <- paste0(outDir,"/compiled_mutations_column_subset_all_studies.txt")
+write.table(svCompiled[,oncoKBCols],outF,row.names=F,quote=F,sep="\t")
 
 ######################################
 ### Build primary reporting tables ###
@@ -265,6 +290,10 @@ write.csv(cTypeSummary,"../../output/actionability_db_curration_20231220/test_ca
 # - proportion with cancer type match
 # - prop with high-confidence match
 # - prop with action type: therapy, prognostic, resistance, or other
+
+studyCntsTbl <- svCompiled %>%
+  dplyr::group_by(SourceStudy) %>%
+  dplyr::summarise(nSubjects=dplyr::n_distinct(Tumor_Sample_Barcode))
 
 
 ### Disconnect from SQL db ###
@@ -1094,6 +1123,8 @@ prognosticTypeCnts <- aa.genome.representative %>%
   dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
   dplyr::arrange(desc(n))
 
+# cTypeCnts <- svCompiled %>% dplyr::group_by(ot_name) %>% summarize(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>% arrange(desc(n))
+
 ProgOutDir <- "../../output/clinical_annotation_matching_20240412/prognostic_analysis_restricted_cancer_types"
 ### create comparisons of distribution types
 testResProgDf <- data.frame()
@@ -1326,3 +1357,156 @@ ggplot(data = SankeyPrognosticCntsGene[seq(1:15),],
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 10,width = 10)
 
+
+
+# tumor purity
+outF <-  paste0(outDir,"/tumor_purity_by_study.pdf")
+ggplot(svCompiled,aes(x=TUMOR_PURITY,fill=SourceStudy))+
+  geom_density(alpha=.4)+
+  theme_minimal() +
+  ggtitle("Tumor purity values listed by study")+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 6)
+# 
+# # VAF and tumor purity - all points
+# iNonNullPurity <- !is.na(svCompiled$TUMOR_PURITY)
+# outF <- paste0(outDir,"/tumor_purity_and_MAF_by_study.pdf")
+# ggplot(svCompiled[iNonNullPurity,],aes(x=TUMOR_PURITY, y=MAF, color=SourceStudy))+
+#   geom_point(alpha=.02)+
+#   geom_density_2d()+
+#   #stat_density_2d(aes(fill = ..level..), color = "black")+ #geom = "polygon",
+#   ylim(c(0,99))+
+#   ggtitle("Tumor purity and MAF values listed by study")+  
+#   scale_color_brewer(palette="Set2",drop=FALSE)+
+#   theme(plot.title = element_text(hjust = 0.5))
+# ggsave(outF,height = 8,width = 8)
+
+
+outF <- paste0(outDir,"/tumor_purity_and_MAF_by_study_v2.pdf")
+ggplot(svCompiled[iNonNullPurity,],aes(x=TUMOR_PURITY, y=MAF, color=SourceStudy))+
+  #geom_point(alpha=.02)+
+  geom_density_2d_filled(alpha = 0.5) +
+  geom_density_2d(linewidth = 0.25)+
+  ylim(c(0,99))+
+  ggtitle("Tumor purity and MAF values listed by study")+  
+  scale_color_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 8)
+
+iNonNullPurity <- !is.na(aa.genome.representative$TUMOR_PURITY)
+outF <- paste0(outDir,"/tumor_purity_and_MAF_by_study_actionable.pdf")
+ggplot(aa.genome.representative[iNonNullPurity,],aes(x=TUMOR_PURITY, y=MAF, color=SourceStudy))+
+  geom_point(alpha=.02)+
+  geom_density_2d()+
+  #stat_density_2d(aes(fill = ..level..), color = "black")+ #geom = "polygon",
+  ylim(c(0,99))+
+  ggtitle("Tumor purity and MAF values listed by study")+  
+  scale_color_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 8)
+
+
+# calculate MAF Purity products
+aa.genome.representative$MAF_x_Purity <- NA
+aa.genome.representative[iNonNullPurity,"MAF_x_Purity"] <- aa.genome.representative[iNonNullPurity,"MAF"] * aa.genome.representative[iNonNullPurity,"TUMOR_PURITY"]
+
+aa.genome.representative$MAF_divided_by_Purity <- NA
+aa.genome.representative[iNonNullPurity,"MAF_divided_by_Purity"] <- aa.genome.representative[iNonNullPurity,"MAF"] / aa.genome.representative[iNonNullPurity,"TUMOR_PURITY"]
+
+outF <-  paste0(outDir,"/MAF_x_Purity_tumor_purity_by_study.pdf")
+ggplot(aa.genome.representative[iNonNullPurity,],aes(x=MAF_x_Purity,fill=SourceStudy))+
+  geom_density(alpha=.4)+
+  theme_minimal() +
+  ggtitle("Tumor purity values listed by study")+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 6)
+
+outF <-  paste0(outDir,"/MAF_divided_by_Purity_tumor_purity_by_study.pdf")
+ggplot(aa.genome.representative[iNonNullPurity,],aes(x=MAF_divided_by_Purity,fill=SourceStudy))+
+  geom_density(alpha=.4)+
+  theme_minimal() +
+  ggtitle("Tumor purity values listed by study")+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 6,width = 6)
+
+# model VAF inputs: alt count and (alt+ref cnt)
+aa.genome.representative <- aa.genome.representative %>%
+  dplyr::mutate(t_alt_plus_ref_count = t_ref_count+t_alt_count)
+iOutlier <- aa.genome.representative$t_alt_plus_ref_count > 3000
+isNaReadCnt <- is.na(aa.genome.representative$t_alt_plus_ref_count) | is.na(aa.genome.representative$t_alt_count)
+outF <- paste0(outDir,"/alt_cnt_ref_cnt_MAF_by_study_actionable.pdf")
+dfForPlot <- aa.genome.representative[!iOutlier & !isNaReadCnt,]
+dfForPlot$fivePercThresh <- dfForPlot$t_alt_plus_ref_count*0.05
+dfForPlot$onePercThresh <- dfForPlot$t_alt_plus_ref_count*0.01
+ggplot(dfForPlot,aes(x=t_alt_plus_ref_count, y=t_alt_count, color=SourceStudy))+ #
+  geom_point(alpha=.02)+
+  geom_density_2d()+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  )+
+  scale_y_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  )+
+  #stat_density_2d(aes(fill = ..level..), color = "black")+ #geom = "polygon",
+  #ylim(c(0,99))+
+  ggtitle("Ref and Alt counts for actionable mutations")+  
+  scale_color_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 8)
+
+# with 5% threshold point
+outF <- paste0(outDir,"/alt_cnt_ref_cnt_MAF_with_5Perc_thresh.pdf")
+ggplot(dfForPlot,aes(x=t_alt_plus_ref_count, y=t_alt_count))+ #, color=SourceStudy
+  geom_point(alpha=.02)+
+  geom_density_2d()+
+  geom_line(data=data.frame(t_alt_plus_ref_count=dfForPlot$t_alt_plus_ref_count,t_alt_count=dfForPlot$fivePercThresh),color="green",alpha=.3)+
+  geom_line(data=data.frame(t_alt_plus_ref_count=dfForPlot$t_alt_plus_ref_count,t_alt_count=dfForPlot$onePercThresh),color="red",alpha=.3)+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  )+
+  scale_y_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  )+
+  ggtitle("Ref and Alt counts for actionable mutations")+  
+  scale_color_brewer(palette="Set2",drop=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 8,width = 8)
+
+# model raw MAF
+iNonNullPurity <- !is.na(aa.genome.representative$TUMOR_PURITY)
+iCancerMatched <- aa.genome.representative$cancerTypeMatch==T
+linModData <- aa.genome.representative[iNonNullPurity & iCancerMatched,]
+
+# Convert categorical variable into one-hot encoding
+linModDataOHE <- linModData %>%
+  mutate(row_id = row_number()) %>%  # Add a unique row identifier
+  pivot_wider(names_from = actionability.summary, values_from = actionability.summary, values_fill = 0, 
+              values_fn = list(actionability.summary = length)) %>%
+  select(-row_id) %>%  # Remove the row identifier
+  mutate(across(.cols = everything(), .fns = ~ as.integer(. > 0)))  # Convert counts to binary
+
+
+#model <- stats::lm(actionability.summary ~ MAF + TUMOR_PURITY + SourceStudy, data = aa.genome.representative[iNonNullPurity,])
+model <- stats::lm(MAF ~ TUMOR_PURITY + actionability.summary + SourceStudy, data = linModData)
+model <- stats::lm(MAF ~ TUMOR_PURITY + actionability.summary + ot_code_level_1 + SourceStudy, data = linModData)
+
+# model MAF divided by purity
+model <- stats::lm(MAF_divided_by_Purity ~ actionability.summary + SourceStudy, data = linModData)
+#model <- stats::lm(MAF_divided_by_Purity ~ Predictive.therapy.actionability + Therapy.resistance +  Prognostic + SourceStudy, data = linModDataOHE)
+
+
+# Summarize the model
+summary(model)
+
+# plot model output and residuals
+# library(car)
+# # Creating a partial residual plot for 'age' in the model
+# crPlots(model)
+# avPlots(model)
+# par(mfrow=c(2,2))
+# plot(model)
+        

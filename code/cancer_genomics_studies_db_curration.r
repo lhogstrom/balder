@@ -62,7 +62,7 @@ hMeta$INT_Biopsy_To_Death <- deathDateNum - biopsyDateNum
 # sample columns needed: cancer type, met/primary
 hSampleSubset <- hMeta[,c("sampleId","primaryTumorLocation","primaryTumorType","tumorPurity","INT_Biopsy_To_Death")]
 colnames(hSampleSubset) <- c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","tumorPurity","INT_Biopsy_To_Death")
-hSampleSubset$TUMOR_PURITY <- hSampleSubset$tumorPurity*0.01
+hSampleSubset$TUMOR_PURITY <- hSampleSubset$tumorPurity
 hSampleSubset$SAMPLE_TYPE <- "Metastasis" # assume all samples are met from Hartwig
 hSampleSubset$SourceStudy <- "Hartwig-data"
 hSampleSubset$ONCOTREE_CODE <- NA # no code listed by authors

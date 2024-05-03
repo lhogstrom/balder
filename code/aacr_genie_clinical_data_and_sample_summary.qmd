@@ -97,7 +97,7 @@ for (x in colnames(patient.genie)) {
 knitr::kable(nullSumm, format="latex", align="l")
 ```
 
-# Defining an inferred duration of treatment 
+# Defining an inferred duration of treatment
 
 ```{r}
 #| echo: true
