@@ -65,6 +65,7 @@ colnames(hSampleSubset) <- c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","t
 hSampleSubset$TUMOR_PURITY <- hSampleSubset$tumorPurity
 hSampleSubset$SAMPLE_TYPE <- "Metastasis" # assume all samples are met from Hartwig
 hSampleSubset$SourceStudy <- "Hartwig-data"
+hSampleSubset$SourceStudyInfo <- "Hartwig_WGS_n4495"
 hSampleSubset$ONCOTREE_CODE <- NA # no code listed by authors
 hSampleSubset$SAMPLE_TYPE_DETAILED <- NA
 hSampleSubset$SEQ_ASSAY_ID <- NA
@@ -83,6 +84,7 @@ RSQLite::dbWriteTable(rawDataDb, "mskMetadata", patient.msk, overwrite=T)
 
 mskSampleSubset <- patient.msk[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE","TUMOR_PURITY")]
 mskSampleSubset$SourceStudy <- "MSK-IMPACT-2017-data"
+mskSampleSubset$SourceStudyInfo <- "MSK_IMPACT_TARGETED_n10129"
 mskSampleSubset$TUMOR_PURITY <- mskSampleSubset$TUMOR_PURITY*0.01
 mskSampleSubset$SAMPLE_TYPE_DETAILED <- NA
 mskSampleSubset$SEQ_ASSAY_ID <- NA
@@ -102,6 +104,7 @@ RSQLite::dbWriteTable(rawDataDb, "pancanMetadata", pancanSampInfo, overwrite=T)
 
 pancanSampleSubset <- pancanSampInfo[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE","STAGE","PURITY")]
 pancanSampleSubset$SourceStudy <- "PANCAN-WGS-data"
+pancanSampleSubset$SourceStudyInfo <- "PANCAN_WGS_n2583"
 pancanSampleSubset$TUMOR_PURITY <- pancanSampleSubset$PURITY
 pancanSampleSubset$SAMPLE_TYPE_DETAILED <- NA
 pancanSampleSubset$SEQ_ASSAY_ID <- NA
@@ -152,6 +155,7 @@ genieSampleSubset <- samplePatient[,c("SAMPLE_ID",
                                       "INT_SEQ_TO_DEATH",
                                       "INT_SEQ_TO_CONTACT")]
 genieSampleSubset$SourceStudy <- "AACR-GENIE-data"
+genieSampleSubset$SourceStudyInfo <- "AACR_GENIE_TARGETED_n161797"
 genieSampleSubset$STAGE <- NA
 genieSampleSubset$TUMOR_PURITY <- NA
 genieSampleSubset$INT_Biopsy_To_Death <- NA
