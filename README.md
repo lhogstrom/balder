@@ -13,7 +13,7 @@ Raw data and analysis output are not stored directly in this repository. Acordin
 <pre>
 .
 
-|-- data                 # Directory for datasets
+|-- data                 # Directory for data
 
 |   |-- raw              # Raw data, unprocessed
 
