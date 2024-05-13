@@ -7,7 +7,7 @@ library(ggplot2)
 library(ggalluvial)
 
 ### connect to result DB and get variants
-outDir <- "../../output/clinical_annotation_matching_20240412"
+outDir <- "../../output/clinical_annotation_matching_20240503"
 bDir <- "../../data/processed/balderResultsDb"
 dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
@@ -53,36 +53,23 @@ otCodeCols <- c("ot_code", "ot_name", "Highest_Non_Null_Level", "oncotree_level"
                 "level_6_disease", "ot_code_level_6")
 
 ### join sample info to variant data
-svCompiled <- poVariants %>%
+svCompiledPrelim <- poVariants %>%
   dplyr::inner_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
                    by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>% # exclude samples that do not have any sample information
   dplyr::left_join(ot_code_full[,otCodeCols],by=c("ONCOTREE_CODE"="ot_code")) %>% # join ot_codes to annotation
   dplyr::filter(!SAMPLE_TYPE == "Cell line")
-print(dim(svCompiled))
+print(dim(svCompiledPrelim))
 
-# Load list of oncokb genes
-inFile <- "../../data/oncokb/cancerGeneList.tsv"
-genesOncokb <- read.csv(inFile,sep="\t")
+# add oncoKB results
+oncokbRes <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM oncoKBAnnotatedVariantTable')
+colnames(oncokbRes) <- paste0("ONCOKB_",colnames(oncokbRes))
 
-# filter variants to oncoKB gene list
-# okbCompiledSubset <- svCompiled %>%
-#   dplyr::filter(Hugo_Symbol %in% genesOncokb$Hugo.Symbol) %>%
-#   dplyr::group_by(Hugo_Symbol,
-#                   HGVSp,
-#                   HGVSp_Short,
-#                   ONCOTREE_CODE) %>%
-#   dplyr::summarise(n=dplyr::n()) %>%
-#   dplyr::filter(!HGVSp == "") %>%
-#   dplyr::arrange(desc(n))
+# confirm oncokb entries match order of annotated variants
+table(oncokbRes$ONCOKB_Tumor_Sample_Barcode == svCompiledPrelim$Tumor_Sample_Barcode,exclude=NULL)
+table(oncokbRes$ONCOKB_HGVSp == svCompiledPrelim$HGVSp,exclude=NULL)
+table(oncokbRes$ONCOKB_ONCOTREE_CODE == svCompiledPrelim$ONCOTREE_CODE,exclude=NULL)
 
-oncoKBCols <- c("Hugo_Symbol",
-                "Tumor_Sample_Barcode",
-                "HGVSp",
-                "HGVSp_Short",
-                #"HGVSg",
-                "ONCOTREE_CODE")
-outF <- paste0(outDir,"/compiled_mutations_column_subset_all_studies.txt")
-write.table(svCompiled[,oncoKBCols],outF,row.names=F,quote=F,sep="\t")
+svCompiled <- cbind(svCompiledPrelim,oncokbRes[,6:ncol(oncokbRes)]) # exclude columns in oncokb output that are already in data product
 
 ######################################
 ### Build primary reporting tables ###
@@ -149,7 +136,6 @@ write.csv(aa.genome.representative,
 # SQL write
 RSQLite::dbWriteTable(harmonizedDb, "representativeClinicalAnnotatedPatientVariants", aa.genome.representative,overwrite=T)
 
-
 # count before and after representative variant selection
 print(dim(aa.genome.exahustive))
 print(dim(aa.genome.representative))
@@ -158,6 +144,149 @@ table(aa.genome.representative$cancerTypeMatch)
 length(unique(genome.match.exhaustive$balderVariantID))
 length(unique(genome.match.exhaustive$Tumor_Sample_Barcode))
 
+#################################
+### summary of oncokb results ###
+#################################
+
+### find oncokb matched variants
+onckbAnnotated <- svCompiled %>%
+  dplyr::filter(ONCOKB_IS_SENS_DX_PX_OR_RESISTANCE == T)
+
+table(onckbAnnotated$balderVariantID %in% aa.genome.representative$balderVariantID)
+table(aa.genome.representative$balderVariantID %in% onckbAnnotated$balderVariantID)
+
+## which variants are onckb annotated but not annotated via MIA/CiVIC? 
+iOnckbOnlyGrp <- onckbAnnotated$balderVariantID %in% aa.genome.representative$balderVariantID
+okBID <- onckbAnnotated[!iOnckbOnlyGrp,"balderVariantID"]
+oncokbOnly <-svCompiled[svCompiled$balderVariantID %in% okBID,]
+
+aa.genome.representative.oncokb <- rbind(aa.genome.representative,oncokbOnly)
+
+# what proportion of variants are in oncokb database? 
+table(svCompiled$ONCOKB_VARIANT_IN_ONCOKB)
+
+# 2x2 of in oncokb and in exiting matching approach
+table(svCompiled$ONCOKB_VARIANT_IN_ONCOKB, svCompiled$balderVariantID %in% aa.genome.representative$balderVariantID)
+
+# how many variants are not matched via oncokb, but are matched by other annotation sources? 
+table(aa.genome.representative.oncokb$ONCOKB_VARIANT_IN_ONCOKB)
+
+# breakdown of oncokb "highest_effect". How does it match to "actionability.summary"
+table(aa.genome.representative.oncokb$ONCOKB_HIGHEST_LEVEL,aa.genome.representative.oncokb$clinical.evidence.summary)
+# repeat for cancer type match
+ctMatchRep <- aa.genome.representative.oncokb[aa.genome.representative.oncokb$cancerTypeMatch==T,]
+table(ctMatchRep$ONCOKB_HIGHEST_LEVEL,ctMatchRep$clinical.evidence.summary)
+
+### concordance of oncokb and CIVIC/MOA results
+iActionable <- (aa.genome.representative.oncokb$ONCOKB_IS_SENS_DX_PX_OR_RESISTANCE==T) |
+  (!is.na(aa.genome.representative.oncokb$actionability.summary))
+okbVariantSummary <- aa.genome.representative.oncokb[iActionable,] %>%
+  dplyr::group_by(Hugo_Symbol,HGVSp_Short,ONCOTREE_CODE) %>%
+  dplyr::summarise(n=dplyr::n(),
+                   sensitivity_entry_cnt_oncokb=sum(ONCOKB_HAS_SENSITIVE_ENTRY),
+                   sensitivity_entry_cnt_CIVIC_MOA=sum(actionability.summary=="Predictive therapy actionability"),
+                   sensitivity_cnt_match=sensitivity_entry_cnt_oncokb==sensitivity_entry_cnt_CIVIC_MOA,
+                   resistance_entry_cnt_oncokb=sum(ONCOKB_HAS_RESISTANCE_ENTRY),
+                   resistance_entry_cnt_CIVIC_MOA=sum(actionability.summary=="Therapy resistance"),
+                   resistance_cnt_match=resistance_entry_cnt_oncokb==resistance_entry_cnt_CIVIC_MOA,
+                   Px_entry_cnt_oncokb=sum(ONCOKB_HAS_PX_ENTRY),
+                   Px_entry_cnt_CIVIC_MOA=sum(actionability.summary=="Prognostic"),
+                   Px_cnt_match=Px_entry_cnt_oncokb==Px_entry_cnt_CIVIC_MOA,
+                   DX_entry_cnt_oncokb=sum(ONCOKB_HAS_DX_ENTRY),
+                   other_cnt_MOA_CIVIC=sum(actionability.summary=="Other")) %>%
+  dplyr::arrange(desc(n))
+outF <- paste0(outDir,"/oncokb_MOA_CIVIC_variant_summary_table.txt")
+write.table(okbVariantSummary,outF,row.names=F,quote=F,sep="\t")
+
+### build summary of oncokb annotations alone
+iDx <- grepl("LEVEL_Dx",aa.genome.representative.oncokb$ONCOKB_HIGHEST_LEVEL_SUMMARY)
+dxAnnotated <- aa.genome.representative.oncokb[iDx,]
+table(dxAnnotated$ONCOKB_HIGHEST_LEVEL_SUMMARY,dxAnnotated$actionability.summary)
+
+#iPx <- grepl("LEVEL_Px",aa.genome.representative.oncokb$ONCOKB_HIGHEST_LEVEL_SUMMARY) | 
+#  grepl("Prognostic",aa.genome.representative.oncokb$actionability.summary)
+iPx <- grepl("LEVEL_Px",aa.genome.representative.oncokb$ONCOKB_HIGHEST_LEVEL_SUMMARY)
+pxAnnotated <- aa.genome.representative.oncokb[iPx,]
+table(pxAnnotated$ONCOKB_HIGHEST_LEVEL_SUMMARY,pxAnnotated$actionability.summary,exclude=NULL)
+
+######################################
+### Build primary reporting tables ###
+######################################
+
+### non-annotated, background/control variants - 
+non.annotated.variants <- svCompiled %>%
+  dplyr::filter(!balderVariantID %in% aa.genome.representative$balderVariantID) %>%
+  dplyr::mutate(clinical_annotation_status="not annotated")
+annotated.and.non.annotated <- rbind(aa.genome.representative,non.annotated.variants) # same as svCompiled, but with annotation columns
+
+### per-patient summary - from exhaustive table
+exhaustive.matched.patient.summary <- aa.genome.exahustive %>%
+  dplyr::group_by(Tumor_Sample_Barcode) %>%
+  dplyr::summarize(n.variants.matched=dplyr::n_distinct(balderVariantID),
+                   anyOtCodeCancerTypeMatch=TRUE %in% cancerTypeMatch,
+                   exactOtCodeCancerTypeMatch=TRUE %in% cancerTypeMatchPrimary,
+                   actionSummary=paste0(unique(actionability.summary),collapse=";"),
+                   predTherapyAction="Predictive therapy actionability" %in% actionability.summary,
+                   prognosticAction="Prognostic" %in% actionability.summary,
+                   resistanceAction="Therapy resistance" %in% actionability.summary,
+                   otherAction="Other" %in% actionability.summary,
+                   clinEvidienceSummary=paste0(unique(clinical.evidence.summary),collapse=";"),
+                   highConfidenceMatch="High Confidence" %in% clinical.evidence.summary,
+                   otCode=paste0(unique(ONCOTREE_CODE),collapse=";"),
+                   disease=paste0(unique(Disease),collapse=";"),
+                   source=paste0(unique(source),collapse=";"),
+                   Drugs=paste0(unique(Drugs),collapse=";"),
+                   ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+  dplyr::arrange(desc(n.variants.matched))
+
+### per-patient summary - from representative table
+# exhaustive.matched.patient.summary <- aa.genome.representative %>%
+#   dplyr::group_by(Tumor_Sample_Barcode) %>%
+#   dplyr::summarize(n.variants.matched=dplyr::n_distinct(balderVariantID),
+#                    anyCancerTypeMatch=TRUE %in% cancerTypeMatch,
+#                    actionSummary=paste0(unique(actionability.summary),collapse=";"),
+#                    predTherapyAction="Predictive therapy actionability" %in% actionability.summary,
+#                    prognosticAction="Prognostic" %in% actionability.summary,
+#                    resistanceAction="Therapy resistance" %in% actionability.summary,
+#                    otherAction="Other" %in% actionability.summary,
+#                    clinEvidienceSummary=paste0(unique(clinical.evidence.summary),collapse=";"),
+#                    highConfidenceMatch="High Confidence" %in% clinical.evidence.summary,
+#                    otCode=paste0(unique(ONCOTREE_CODE),collapse=";"),
+#                    disease=paste0(unique(Disease),collapse=";"),
+#                    source=paste0(unique(source),collapse=";"),
+#                    Drugs=paste0(unique(Drugs),collapse=";"),
+#                    ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
+#   dplyr::arrange(desc(n.variants.matched))
+
+
+### summary table
+# Combine the pairs into a matrix, then convert to a data frame
+pairs_matrix <- rbind(c("number of starting subjects",length(unique(svCompiled$Tumor_Sample_Barcode))), 
+                      c("number of starting variants",dim(svCompiled)[[1]]),
+                      c("number of exhaustive annotation matches (one-to-many mapping)",dim(aa.genome.exahustive)[[1]]),
+                      c("number of subjects with at least one match",length(unique(genome.match.exhaustive$Tumor_Sample_Barcode))),
+                      c("number of unique variants with annotation match",print(dim(aa.genome.representative))[[1]]),
+                      c("number of subjects with an exact OncoTree cancer type annotation match",sum(exhaustive.matched.patient.summary$exactOtCodeCancerTypeMatch==T)),
+                      c("number of subjects with any OncoTree hierarchy cancer type annotation match",sum(exhaustive.matched.patient.summary$anyOtCodeCancerTypeMatch==T)))
+reportTable <- data.frame(pairs_matrix)
+write.csv(reportTable,"../../output/actionability_db_curration_20231220/actionability_exhaustive_representative_counts.csv")
+
+
+### create an incidence table by cancer type
+cType.sample.counts <- svCompiled %>%
+  dplyr::group_by(ONCOTREE_CODE) %>%
+  dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";")) %>%
+                   
+                   DX_entry_cnt_oncokb=sum(ONCOKB_HAS_DX_ENTRY),
+                   other_cnt_MOA_CIVIC=sum(actionability.summary=="Other")) %>%
+  dplyr::arrange(desc(n))
+outF <- paste0(outDir,"/oncokb_MOA_CIVIC_variant_summary_table.txt")
+write.table(okbVariantSummary,outF,row.names=F,quote=F,sep="\t")
+
+######################################
+### Build primary reporting tables ###
+######################################
 
 ### non-annotated, background/control variants - 
 non.annotated.variants <- svCompiled %>%
@@ -262,6 +391,19 @@ cType.restricted.match.summary <- aa.genome.exahustive %>%
                    Drugs=paste0(unique(Drugs),collapse=";"),
                    ReferenceOrTrialID=paste0(unique(ReferenceOrTrialID),collapse=";")) %>%
   dplyr::arrange(desc(n.patients.restricted.matched))
+
+otCodeOncokBSummary <- oncokbOnly %>%
+  dplyr::group_by(ONCOTREE_CODE,ONCOKB_HIGHEST_LEVEL_SUMMARY) %>%
+  dplyr::summarize(n.variants.restricted.matched=dplyr::n_distinct(balderVariantID),
+                   n.patients.restricted.matched=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n.patients.restricted.matched))
+
+otTissueOncokBSummary <- oncokbOnly %>%
+  dplyr::group_by(ot_code_level_1,ONCOKB_HIGHEST_LEVEL_SUMMARY) %>%
+  dplyr::summarize(n.variants.restricted.matched=dplyr::n_distinct(balderVariantID),
+                   n.patients.restricted.matched=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n.patients.restricted.matched))
+
 
 cTypeSummary <- cType.sample.counts %>%
   dplyr::left_join(cType.unrestricted.match.summary[,c("n.variants.unrestricted.matched",
