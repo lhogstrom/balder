@@ -1,0 +1,52 @@
+---
+title: "Balder annotation matching summary"
+date: 2024-05-13
+author:
+  - name: Larson Hogstrom
+    id: lh
+    email: larsonh@uio.no
+    affiliation: 
+      - name: Oslo Cancer Hospital
+        city: Oslo
+        url: https://www.ous-research.no/institute/
+format: pdf
+editor: visual
+---
+
+# Overview
+
+The goal of this document is to report summary statistics for variant annotation matching.
+
+## Loading data
+
+```{r}
+#| echo: false
+#| include: false
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+```{r}
+bDir <- "../../../data/processed/balderResultsDb"
+figDir <- "../../../output/actionability_db_curration_20231220"
+dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
+harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
+
+RSQLite::dbWriteTable(harmonizedDb, "exhaustiveClinicalAnnotatedPatientVariants", aa.genome.exahustive,overwrite=T)
+
+aa.genome.exahustive <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM exhaustiveClinicalAnnotatedPatientVariants')
+aa.genome.representative <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariants')
+aa.genome.representative.oncokb <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariantsWithOncoKB')
+```
+
+# OncoKB and MOA/CIViC concordance 
+
+Summary of columns and proportion of null entries
+
+```{r}
+#| echo: false
+#| include: true
+
+#knitr::kable(nullSumm, format="latex", align="l")
+```

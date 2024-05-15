@@ -5,6 +5,7 @@ library(RSQLite)
 library(ggrepel)
 library(ggplot2)
 library(ggalluvial)
+source("R/snv_indel_annotation.R")
 
 ### connect to result DB and get variants
 outDir <- "../../output/clinical_annotation_matching_20240503"
@@ -43,23 +44,6 @@ sampleInfoCompiled$INT_Seq_or_Biopsy_To_Death <- sampleInfoCompiled$INT_Biopsy_T
 iNonNullSeqDeath <- !is.na(sampleInfoCompiled[,"INT_SEQ_TO_DEATH"])
 sampleInfoCompiled[iNonNullSeqDeath,"INT_Seq_or_Biopsy_To_Death"] <- sampleInfoCompiled[iNonNullSeqDeath,"INT_SEQ_TO_DEATH"]
 
-
-otCodeCols <- c("ot_code", "ot_name", "Highest_Non_Null_Level", "oncotree_level",
-                "level_1_disease", "ot_code_level_1",
-                "level_2_disease", "ot_code_level_2",
-                "level_3_disease", "ot_code_level_3",
-                "level_4_disease", "ot_code_level_4",
-                "level_5_disease", "ot_code_level_5",
-                "level_6_disease", "ot_code_level_6")
-
-### join sample info to variant data
-svCompiledPrelim <- poVariants %>%
-  dplyr::inner_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
-                   by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>% # exclude samples that do not have any sample information
-  dplyr::left_join(ot_code_full[,otCodeCols],by=c("ONCOTREE_CODE"="ot_code")) %>% # join ot_codes to annotation
-  dplyr::filter(!SAMPLE_TYPE == "Cell line")
-print(dim(svCompiledPrelim))
-
 # add oncoKB results
 oncokbRes <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM oncoKBAnnotatedVariantTable')
 colnames(oncokbRes) <- paste0("ONCOKB_",colnames(oncokbRes))
@@ -69,55 +53,90 @@ table(oncokbRes$ONCOKB_Tumor_Sample_Barcode == svCompiledPrelim$Tumor_Sample_Bar
 table(oncokbRes$ONCOKB_HGVSp == svCompiledPrelim$HGVSp,exclude=NULL)
 table(oncokbRes$ONCOKB_ONCOTREE_CODE == svCompiledPrelim$ONCOTREE_CODE,exclude=NULL)
 
-svCompiled <- cbind(svCompiledPrelim,oncokbRes[,6:ncol(oncokbRes)]) # exclude columns in oncokb output that are already in data product
+# # oncotree code level names
+# otCodeCols <- c("ot_code", "ot_name", "Highest_Non_Null_Level", "oncotree_level",
+#                 "level_1_disease", "ot_code_level_1",
+#                 "level_2_disease", "ot_code_level_2",
+#                 "level_3_disease", "ot_code_level_3",
+#                 "level_4_disease", "ot_code_level_4",
+#                 "level_5_disease", "ot_code_level_5",
+#                 "level_6_disease", "ot_code_level_6")
+# 
+# ### join sample info to variant data
+# svCompiledPrelim <- poVariants %>%
+#   dplyr::inner_join(sampleInfoCompiled[,!colnames(sampleInfoCompiled)=="SourceStudy"],
+#                    by=c("Tumor_Sample_Barcode"="SAMPLE_ID")) %>% # exclude samples that do not have any sample information
+#   dplyr::left_join(ot_code_full[,otCodeCols],by=c("ONCOTREE_CODE"="ot_code")) %>% # join ot_codes to annotation
+#   dplyr::filter(!SAMPLE_TYPE == "Cell line")
+# print(dim(svCompiledPrelim))
+# 
+# svCompiled <- cbind(svCompiledPrelim,oncokbRes[,6:ncol(oncokbRes)]) # exclude columns in oncokb output that are already in data product
+
+svComiled <- combine_patient_table_and_oncokb(poVariants,
+                                              sampleInfoCompiled,
+                                              ot_code_full,
+                                              oncokbRes)
 
 ######################################
 ### Build primary reporting tables ###
 ######################################
 
-aa.match.exhaustive <- svCompiled %>%
-  dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
-                                 "AAChangeObserved"="AAChange"),
-                    relationship = "many-to-many") %>%
-  dplyr::mutate(matchAndVarID=paste0(balderVariantID,"-",balderRuleID)) %>%
-  dplyr::mutate(AAChange=AAChangeObserved,
-                gene=Hugo_Symbol) # create dummy variable for combining
-  
-genome.match.exhaustive <- svCompiled %>%
-  dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome_annotation",
-                                 "Start_Position"="pos",
-                                 "Reference_Allele"="ref",
-                                 "Tumor_Seq_Allele2"="alt"),
-                    relationship = "many-to-many") %>%
-  dplyr::mutate(matchAndVarID=paste0(balderVariantID,"-",balderRuleID)) %>%
-  dplyr::mutate(chromosome_annotation=Chromosome,
-                pos=Start_Position,
-                ref=Reference_Allele,
-                alt=Tumor_Seq_Allele2) # create dummy variable for combining
+# aa.match.exhaustive <- svCompiled %>%
+#   dplyr::inner_join(dbRules,by=c("Hugo_Symbol"="gene",
+#                                  "AAChangeObserved"="AAChange"),
+#                     relationship = "many-to-many") %>%
+#   dplyr::mutate(matchAndVarID=paste0(balderVariantID,"-",balderRuleID)) %>%
+#   dplyr::mutate(AAChange=AAChangeObserved,
+#                 gene=Hugo_Symbol) # create dummy variable for combining
+#   
+# genome.match.exhaustive <- svCompiled %>%
+#   dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome_annotation",
+#                                  "Start_Position"="pos",
+#                                  "Reference_Allele"="ref",
+#                                  "Tumor_Seq_Allele2"="alt"),
+#                     relationship = "many-to-many") %>%
+#   dplyr::mutate(matchAndVarID=paste0(balderVariantID,"-",balderRuleID)) %>%
+#   dplyr::mutate(chromosome_annotation=Chromosome,
+#                 pos=Start_Position,
+#                 ref=Reference_Allele,
+#                 alt=Tumor_Seq_Allele2) # create dummy variable for combining
+# 
+# aa.genome.exahustive <- rbind(aa.match.exhaustive,genome.match.exhaustive) %>% 
+#   dplyr::group_by(balderVariantID,balderRuleID) %>%
+#   dplyr::filter(dplyr::row_number()==1) %>%
+#   dplyr::mutate(cancerTypeMatchPrimary=oncotree_code_annotation==ONCOTREE_CODE & !is.na(ONCOTREE_CODE), # ot code from variants (CAPS) & ot code from annotation (not caps)
+#                 cancerTypeMatchLevel1=oncotree_code_annotation==ot_code_level_1 & !is.na(ot_code_level_1),
+#                 cancerTypeMatchLevel2=oncotree_code_annotation==ot_code_level_2 & !is.na(ot_code_level_2),
+#                 cancerTypeMatchLevel3=oncotree_code_annotation==ot_code_level_3 & !is.na(ot_code_level_3),
+#                 cancerTypeMatchLevel4=oncotree_code_annotation==ot_code_level_4 & !is.na(ot_code_level_4),
+#                 cancerTypeMatchLevel5=oncotree_code_annotation==ot_code_level_5 & !is.na(ot_code_level_5),
+#                 cancerTypeMatchLevel6=oncotree_code_annotation==ot_code_level_6 & !is.na(ot_code_level_6),
+#                 cancerTypeMatch = cancerTypeMatchPrimary | cancerTypeMatchLevel1 | cancerTypeMatchLevel2 | cancerTypeMatchLevel3 | cancerTypeMatchLevel4 | cancerTypeMatchLevel5 | cancerTypeMatchLevel6)
+# 
+# #%>% # filter entries if there is a AA match and genomic match
+#   #dplyr::mutate(annotationMatchGenomicCoord=matchAndVarID %in% genome.match.exhaustive$matchAndVarID,
+#                 #annotationMatchAAChange=matchAndVarID %in% aa.match.exhaustive$matchAndVarID)
+# aa.genome.exahustive$annotationMatchGenomicCoord <- aa.genome.exahustive$matchAndVarID %in% genome.match.exhaustive$matchAndVarID
+# aa.genome.exahustive$annotationMatchAAChange <- aa.genome.exahustive$matchAndVarID %in% aa.match.exhaustive$matchAndVarID
+# 
 
-aa.genome.exahustive <- rbind(aa.match.exhaustive,genome.match.exhaustive) %>% 
-  dplyr::group_by(balderVariantID,balderRuleID) %>%
-  dplyr::filter(dplyr::row_number()==1) %>%
-  dplyr::mutate(cancerTypeMatchPrimary=oncotree_code_annotation==ONCOTREE_CODE & !is.na(ONCOTREE_CODE), # ot code from variants (CAPS) & ot code from annotation (not caps)
-                cancerTypeMatchLevel1=oncotree_code_annotation==ot_code_level_1 & !is.na(ot_code_level_1),
-                cancerTypeMatchLevel2=oncotree_code_annotation==ot_code_level_2 & !is.na(ot_code_level_2),
-                cancerTypeMatchLevel3=oncotree_code_annotation==ot_code_level_3 & !is.na(ot_code_level_3),
-                cancerTypeMatchLevel4=oncotree_code_annotation==ot_code_level_4 & !is.na(ot_code_level_4),
-                cancerTypeMatchLevel5=oncotree_code_annotation==ot_code_level_5 & !is.na(ot_code_level_5),
-                cancerTypeMatchLevel6=oncotree_code_annotation==ot_code_level_6 & !is.na(ot_code_level_6),
-                cancerTypeMatch = cancerTypeMatchPrimary | cancerTypeMatchLevel1 | cancerTypeMatchLevel2 | cancerTypeMatchLevel3 | cancerTypeMatchLevel4 | cancerTypeMatchLevel5 | cancerTypeMatchLevel6)
-
-#%>% # filter entries if there is a AA match and genomic match
-  #dplyr::mutate(annotationMatchGenomicCoord=matchAndVarID %in% genome.match.exhaustive$matchAndVarID,
-                #annotationMatchAAChange=matchAndVarID %in% aa.match.exhaustive$matchAndVarID)
-aa.genome.exahustive$annotationMatchGenomicCoord <- aa.genome.exahustive$matchAndVarID %in% genome.match.exhaustive$matchAndVarID
-aa.genome.exahustive$annotationMatchAAChange <- aa.genome.exahustive$matchAndVarID %in% aa.match.exhaustive$matchAndVarID
-
+aa.genome.exahustive <- annotation_matching_genomic_coordinate_and_AA_change(svCompiled,
+                                                                             dbRules)
 # SQL write
 RSQLite::dbWriteTable(harmonizedDb, "exhaustiveClinicalAnnotatedPatientVariants", aa.genome.exahustive,overwrite=T)
 
 # count variants matched on genomic coord and/ or AA change
-table(aa.genome.exahustive$annotationMatchGenomicCoord,aa.genome.exahustive$annotationMatchAAChange,exclude=NULL)
+cnts.aa.genome <- table(aa.genome.exahustive$annotationMatchGenomicCoord,aa.genome.exahustive$annotationMatchAAChange,exclude=NULL)
+perc.aa.genome <- prop.table(cnts.aa.genome) * 100
+tbl.aa.genome <- cbind(Count = cnts.aa.genome, Percentage = perc.aa.genome)
+
+# 
+# table_with_percentages <- function(x) {
+#   counts <- table(x)
+#   percentages <- prop.table(counts) * 100
+#   result <- cbind(Count = counts, Percentage = percentages)
+#   return(result)
+# }
 
 ### AA mismatch events between observed and annotation names? 
 # how often is there a mismatch b/t AA change calls for genomic-based targets? 
@@ -131,7 +150,7 @@ aa.genome.representative <- aa.genome.exahustive %>%
   dplyr::filter(dplyr::row_number()==1) %>%
   dplyr::mutate(clinical_annotation_status="clinically annotated")
 write.csv(aa.genome.representative,
-          "../../output/actionability_db_curration_20231220/actionability_representative_variant_table.csv",
+          paste0(outDir,"/actionability_representative_variant_table.csv"),
           row.names = F)
 # SQL write
 RSQLite::dbWriteTable(harmonizedDb, "representativeClinicalAnnotatedPatientVariants", aa.genome.representative,overwrite=T)
@@ -161,6 +180,7 @@ okBID <- onckbAnnotated[!iOnckbOnlyGrp,"balderVariantID"]
 oncokbOnly <-svCompiled[svCompiled$balderVariantID %in% okBID,]
 
 aa.genome.representative.oncokb <- rbind(aa.genome.representative,oncokbOnly)
+RSQLite::dbWriteTable(harmonizedDb, "representativeClinicalAnnotatedPatientVariantsWithOncoKB", aa.genome.representative.oncokb, overwrite=T)
 
 # what proportion of variants are in oncokb database? 
 table(svCompiled$ONCOKB_VARIANT_IN_ONCOKB)
