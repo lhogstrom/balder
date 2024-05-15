@@ -38,7 +38,7 @@ combine_patient_table_and_oncokb <-
   }
 
 #' Function that joins snv/indel data with clinical annotations according 
-#' to AA change and genomic coordinates
+#' to AA change and genomic coordinates 
 #'
 #' @param svCompiled Compiled snv/indel data with patient's cancer type and oncotree code
 #' @param dbRules List of compiled clinical annotation rules
