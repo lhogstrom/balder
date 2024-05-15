@@ -6,6 +6,7 @@ library(ggrepel)
 library(ggplot2)
 library(ggalluvial)
 source("R/snv_indel_annotation.R")
+source("R/utils.R")
 
 ### connect to result DB and get variants
 outDir <- "../../output/clinical_annotation_matching_20240503"
@@ -126,17 +127,8 @@ aa.genome.exahustive <- annotation_matching_genomic_coordinate_and_AA_change(svC
 RSQLite::dbWriteTable(harmonizedDb, "exhaustiveClinicalAnnotatedPatientVariants", aa.genome.exahustive,overwrite=T)
 
 # count variants matched on genomic coord and/ or AA change
-cnts.aa.genome <- table(aa.genome.exahustive$annotationMatchGenomicCoord,aa.genome.exahustive$annotationMatchAAChange,exclude=NULL)
-perc.aa.genome <- prop.table(cnts.aa.genome) * 100
-tbl.aa.genome <- cbind(Count = cnts.aa.genome, Percentage = perc.aa.genome)
+cnts_exhaustive_summary <- group_count_percentage(aa.genome.exahustive,"annotationMatchGenomicCoord","annotationMatchAAChange")
 
-# 
-# table_with_percentages <- function(x) {
-#   counts <- table(x)
-#   percentages <- prop.table(counts) * 100
-#   result <- cbind(Count = counts, Percentage = percentages)
-#   return(result)
-# }
 
 ### AA mismatch events between observed and annotation names? 
 # how often is there a mismatch b/t AA change calls for genomic-based targets? 

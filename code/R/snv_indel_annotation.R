@@ -1,4 +1,13 @@
 
+#' Combine patient observed snv/indels with sample info, oncotree codes, and 
+#' OncoKB results
+#'
+#' @param poVariants patient observed snv/indel table
+#' @param sampleInfoCompiled compiled sample information with cancer type
+#' @param ot_code_full table of oncotree codes
+#' @param oncokbRes oncokb results matching patient observed variants
+#'
+#' @return compiled variant and sample information
 combine_patient_table_and_oncokb <-
   function(poVariants,
            sampleInfoCompiled,
@@ -27,6 +36,7 @@ combine_patient_table_and_oncokb <-
     return(svCompiled)
     
   }
+
 #' Function that joins snv/indel data with clinical annotations according 
 #' to AA change and genomic coordinates
 #'
