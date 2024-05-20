@@ -16,6 +16,6 @@ two_group_count_percentage <- function(df, group_col1, group_col2) {
     group_by(!!sym(group_col1), !!sym(group_col2)) %>%
     summarise(count = n()) %>%
     mutate(percentage = (count / n) * 100, 
-           cnt_str = paste0(count, " (", round(percentage, 1), "%)")) %>%
+           counts_and_percent = paste0(count, " (", round(percentage, 1), "%)")) %>%
     ungroup()
 }

@@ -31,6 +31,12 @@ combine_patient_table_and_oncokb <-
       dplyr::filter(!SAMPLE_TYPE == "Cell line")
     print(dim(svCompiledPrelim))
     
+    # confirm oncokb entries match order of annotated variants
+    # table(oncokbRes$ONCOKB_Tumor_Sample_Barcode == svCompiledPrelim$Tumor_Sample_Barcode,exclude=NULL)
+    # table(oncokbRes$ONCOKB_HGVSp == svCompiledPrelim$HGVSp,exclude=NULL)
+    # table(oncokbRes$ONCOKB_ONCOTREE_CODE == svCompiledPrelim$ONCOTREE_CODE,exclude=NULL)
+    
+    # assume oncokb row order matches patient observed variants
     svCompiled <- cbind(svCompiledPrelim,oncokbRes[,6:ncol(oncokbRes)]) # exclude columns in oncokb output that are already in data product
     
     return(svCompiled)
@@ -69,6 +75,10 @@ annotation_matching_genomic_coordinate_and_AA_change <-
                     pos=Start_Position,
                     ref=Reference_Allele,
                     alt=Tumor_Seq_Allele2) # create dummy variable for combining
+    
+    ### AA mismatch events between observed and annotation names? 
+    # how often is there a mismatch b/t AA change calls for genomic-based targets? 
+    #table(genome.match.exhaustive$AAChangeObserved == genome.match.exhaustive$AAChange)
     
     aa.genome.exahustive <- rbind(aa.match.exhaustive,genome.match.exhaustive) %>% 
       dplyr::group_by(balderVariantID,balderRuleID) %>%

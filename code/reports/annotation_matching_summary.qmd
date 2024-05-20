@@ -25,6 +25,9 @@ The goal of this document is to report summary statistics for variant annotation
 library(dplyr)
 library(ggplot2)
 library(RColorBrewer)
+
+source("../R/snv_indel_annotation.R")
+source("../R/utils.R")
 ```
 
 ```{r}
@@ -33,14 +36,65 @@ figDir <- "../../../output/actionability_db_curration_20231220"
 dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
 
-RSQLite::dbWriteTable(harmonizedDb, "exhaustiveClinicalAnnotatedPatientVariants", aa.genome.exahustive,overwrite=T)
-
 aa.genome.exahustive <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM exhaustiveClinicalAnnotatedPatientVariants')
 aa.genome.representative <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariants')
 aa.genome.representative.oncokb <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariantsWithOncoKB')
 ```
 
-# OncoKB and MOA/CIViC concordance 
+# MOA and CIViC matching
+
+### Exhaustive matching
+
+What proportion of exhaustive annotation matching occurs via genomic coordinates, amino acid change (AAChange) or both?
+
+```{r}
+#| echo: false
+#| include: true
+
+cnts_exhaustive_summary <- two_group_count_percentage(aa.genome.exahustive,"annotationMatchGenomicCoord","annotationMatchAAChange")
+iCols <- c("annotationMatchGenomicCoord","annotationMatchAAChange","counts_and_percent")
+knitr::kable(cnts_exhaustive_summary[,iCols], format="latex", align="l")
+```
+
+```{r}
+#| echo: false
+#| include: false
+# How often is there a mistmatch between the amino acid reported in the MAF table from source study vs. the same genomic coordinates reported in the CIVIC/MOA annotation
+# 
+# genome.match.exhaustive <- svCompiled %>%
+#   dplyr::inner_join(dbRules,by=c("Chromosome"="chromosome_annotation",
+#                                  "Start_Position"="pos",
+#                                  "Reference_Allele"="ref",
+#                                  "Tumor_Seq_Allele2"="alt"),
+#                     relationship = "many-to-many") %>%
+#   dplyr::mutate(matchAndVarID=paste0(balderVariantID,"-",balderRuleID)) %>%
+#   dplyr::mutate(chromosome_annotation=Chromosome,
+#                 pos=Start_Position,
+#                 ref=Reference_Allele,
+#                 alt=Tumor_Seq_Allele2) # create dummy variable for combining
+# 
+# ### AA mismatch events between observed and annotation names? 
+# # how often is there a mismatch b/t AA change calls for genomic-based targets? 
+# table(genome.match.exhaustive$AAChangeObserved == genome.match.exhaustive$AAChange)
+# genome.match.exhaustive[!genome.match.exhaustive$AAChangeObserved == genome.match.exhaustive$AAChange,c("AAChangeObserved","AAChange","source")]
+```
+
+### Representative matching
+
+```{r}
+#| echo: false
+#| include: true
+# count before and after representative variant selection
+print(dim(aa.genome.exahustive))
+print(dim(aa.genome.representative))
+table(aa.genome.representative$cancerTypeMatch)
+
+length(unique(genome.match.exhaustive$balderVariantID))
+length(unique(genome.match.exhaustive$Tumor_Sample_Barcode))
+
+```
+
+# OncoKB and MOA/CIViC concordance
 
 Summary of columns and proportion of null entries
 
@@ -48,5 +102,7 @@ Summary of columns and proportion of null entries
 #| echo: false
 #| include: true
 
-#knitr::kable(nullSumm, format="latex", align="l")
+cnts_exhaustive_summary <- two_group_count_percentage(aa.genome.exahustive,"annotationMatchGenomicCoord","annotationMatchAAChange")
+iCols <- c("annotationMatchGenomicCoord","annotationMatchAAChange","counts_and_percent")
+knitr::kable(cnts_exhaustive_summary[,iCols], format="latex", align="l")
 ```
