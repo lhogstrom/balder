@@ -231,7 +231,7 @@ exhaustive.matched.patient.summary <- aa.genome.exahustive %>%
 pairs_matrix <- rbind(c("number of starting subjects",length(unique(svCompiled$Tumor_Sample_Barcode))), 
                       c("number of starting variants",dim(svCompiled)[[1]]),
                       c("number of exhaustive annotation matches (one-to-many mapping)",dim(aa.genome.exahustive)[[1]]),
-                      c("number of subjects with at least one match",length(unique(genome.match.exhaustive$Tumor_Sample_Barcode))),
+                      c("number of subjects with at least one match",length(unique(aa.genome.exahustive$Tumor_Sample_Barcode))),
                       c("number of unique variants with annotation match",print(dim(aa.genome.representative))[[1]]),
                       c("number of subjects with an exact OncoTree cancer type annotation match",sum(exhaustive.matched.patient.summary$exactOtCodeCancerTypeMatch==T)),
                       c("number of subjects with any OncoTree hierarchy cancer type annotation match",sum(exhaustive.matched.patient.summary$anyOtCodeCancerTypeMatch==T)))
@@ -519,6 +519,114 @@ ggplot(seqOtCTypeSummary[iHighest & (iLevel1 | iLevel2),],aes(x=ONCOTREE_CODE,y=
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 8, width = 18)
+
+#############################################
+### level1 and level 2 hits by assay type ###
+#############################################
+
+iLevel1 <- grepl("1",seqOtCTypeSummary$ONCOKB_HIGHEST_LEVEL_SUMMARY)
+iLevel2 <- grepl("2",seqOtCTypeSummary$ONCOKB_HIGHEST_LEVEL_SUMMARY)
+
+level12_hits_per_subj <- oncokbOnly[iLevel1 | iLevel2,] %>% 
+  group_by(Tumor_Sample_Barcode,SEQ_ASSAY_ID_mod) %>% 
+  dplyr::summarise(n=n()) %>%
+  dplyr::group_by(n,SEQ_ASSAY_ID_mod) %>%
+  dplyr::summarise(nPerSub=n()) %>%
+  dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) 
+
+###############################################
+### modeling level1 hits by sequencing site ###
+###############################################
+
+# model which sequence facility factors have the biggest impact on proportion of level1 variants per cancer type
+
+library(rpart)
+library(rpart.plot)
+#library(mlflow)
+
+highest_c_counts <- unique(otCTypeSummary$ONCOTREE_CODE)[1:15]
+iHighest <- seqOtCTypeSummary$ONCOTREE_CODE %in% as.character(highest_c_counts)
+iLevel1 <- grepl("LEVEL_1",seqOtCTypeSummary$ONCOKB_HIGHEST_LEVEL_SUMMARY)
+
+modelCols <- c("perc",
+               "ONCOTREE_CODE",
+               "is_paired_end",
+               "library_selection",
+               "platform",
+               "number_of_genes",
+               "calling_strategy",
+               "preservation_technique")
+
+data <- seqOtCTypeSummary[iHighest & iLevel1,] %>%
+  dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) %>%
+  dplyr::select(all_of(modelCols))
+
+# Convert categorical variables to factors (if not already factors)
+data$ONCOTREE_CODE <- as.factor(data$ONCOTREE_CODE, levels=unique(data$ONCOTREE_CODE))
+data$is_paired_end <- as.factor(data$is_paired_end)
+data$library_selection <- as.factor(data$library_selection)
+data$platform <- as.factor(data$platform)
+data$calling_strategy <- as.factor(data$calling_strategy)
+data$preservation_technique <- as.factor(data$preservation_technique)
+
+# Split the data into training and testing sets
+set.seed(42)
+train_index <- caret::createDataPartition(data$perc, p = 0.8, list = FALSE)
+train_data <- data[train_index, ]
+test_data <- data[-train_index, ]
+
+# Define the formula for the model
+formula <- perc ~ ONCOTREE_CODE + is_paired_end + library_selection + preservation_technique
+
+# Train the Decision Tree Regressor
+tree_model <- rpart(formula, data = train_data, method = "anova")
+
+# Print the model summary
+print(summary(tree_model))
+
+# Visualize the tree
+rpart.plot(tree_model)
+
+# Extract the rules (cut points) from the tree
+tree_rules <- as.data.frame(tree_model$frame)
+tree_rules_no_leaves <- tree_rules[tree_rules$var != "<leaf>", ]  # Exclude leaf nodes
+
+# Print the rules
+print(tree_rules_no_leaves)
+
+# plot model
+plot(tree_model)
+text(tree_model, pretty = 0)
+
+# Predict on the test data
+predictions <- predict(tree_model, newdata = test_data)
+
+# Evaluate the model performance
+mse <- mean((predictions - test_data$perc)^2)
+cat("Mean Squared Error (MSE):", mse, "\n")
+
+
+# # Detailed rules extraction
+# extract_rules <- function(model) {
+#   # Function to extract rules from an rpart model
+#   leaves <- row.names(model$frame)[model$frame$var == "<leaf>"]
+#   path.rpart <- function(i) {
+#     if (i == 1) return(NULL)
+#     else {
+#       p <- path.rpart(model, nodes = i)
+#       return(c(path.rpart(p[1,1]), p[1,2]))
+#     }
+#   }
+#   paths <- lapply(leaves, path.rpart)
+#   rules <- sapply(paths, function(x) paste(x, collapse = " & "))
+#   return(rules)
+# }
+# 
+# rules <- extract_rules(tree_model)
+# cat("Decision Tree Rules:\n")
+# print(rules)
+
+
 
 ##############################
 ### reporting and analysis ###
