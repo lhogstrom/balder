@@ -179,7 +179,7 @@ clinical$source <- "CIViC-clinical"
 clinical$FDAApproved <- NA
 clinical$Indicated <- clinical$evidence_type
 clinical$EvidenceText <- clinical$evidence_statement
-clinical$ReferenceOrTrialID <- clinical$gene_civic_url
+clinical$ReferenceOrTrialID <- clinical$evidence_civic_url
 clinical$Disease <- clinical$disease
 clinical$TrialID <- NA
 clinical$Phase <- NA
