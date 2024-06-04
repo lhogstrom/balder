@@ -168,7 +168,22 @@ seqTypeCntAssay <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
   dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";")) %>%
   dplyr::arrange(desc(n.patients.total))
-head(cType.sample.counts)
+
+# compile clinical info by sequencing type
+seqTypeClinicalInfo <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
+  dplyr::group_by(ONCOTREE_CODE,SEQ_ASSAY_ID_mod) %>% # SAMPLE_TYPE
+  dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";"),
+                   n.Metastatic=sum(SAMPLE_TYPE == "Metastasis"),
+                   n.Primary=sum(SAMPLE_TYPE == "Primary"),
+                   n.LocalRecurrence=sum(SAMPLE_TYPE == "LocalRecurance"),
+                   n.NaHeme = sum(SAMPLE_TYPE == "NA or Heme"),
+                   median.age=median(AGE_AT_SEQ_REPORT),
+                   n.dead=sum(DEAD == "TRUE" | DEAD == "True"),
+                   median.IntSeqToDeath=median(INT_Seq_or_Biopsy_To_Death),
+                   n.StageI=sum(STAGE=="I" | STAGE=="1" | STAGE=="1a" | STAGE=="Ia" | STAGE=="Ib" | STAGE=="1b"),
+                   n.StageII=sum(STAGE=="II" | STAGE=="2" | STAGE=="2a" | STAGE=="IIa" | STAGE=="IIb" | STAGE=="2b")) %>%
+  dplyr::arrange(desc(n.patients.total))
 
 iPrimOrMet <- (oncokbOnly$SAMPLE_TYPE=="Primary") | (oncokbOnly$SAMPLE_TYPE=="Metastasis")
 seqOncokBSummary <- oncokbOnly[iPrimOrMet,] %>%
@@ -323,7 +338,55 @@ predictions <- predict(tree_model, newdata = test_data)
 mse <- mean((predictions - test_data$perc)^2)
 cat("Mean Squared Error (MSE):", mse, "\n")
 
+#### 
 
+# feature analysis 
+library(corrplot)
+library(ggplot2)
+library(reshape2)
+
+seqOtFull <- seqOtCTypeSummary[iHighest & iLevel1,] %>%
+  dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) 
+
+
+# 1. Correlation matrix and heatmap for numeric variables
+# numeric_vars <- df[, sapply(df, is.numeric)]
+# cor_matrix <- cor(numeric_vars, use = "complete.obs")
+# corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+# 2. Chi-squared test of independence for categorical variables
+aInfo <- data.frame(lapply(assayInfo, as.factor))
+cSelect <- colnames(aInfo)
+cSelect <- cSelect[!cSelect %in% c("SEQ_ASSAY_ID")]
+categorical_vars <- aInfo[, cSelect]
+chi_sq_matrix <- matrix(NA, ncol = ncol(categorical_vars), nrow = ncol(categorical_vars))
+colnames(chi_sq_matrix) <- colnames(categorical_vars)
+rownames(chi_sq_matrix) <- colnames(categorical_vars)
+
+for (i in 1:ncol(categorical_vars)) {
+  for (j in 1:ncol(categorical_vars)) {
+    if (i != j) {
+      chi_sq_matrix[i, j] <- chisq.test(categorical_vars[, i], categorical_vars[, j])$p.value
+    } else {
+      chi_sq_matrix[i, j] <- NA
+    }
+  }
+}
+
+chi_sq_melt <- melt(chi_sq_matrix, na.rm = TRUE)
+colnames(chi_sq_melt) <- c("Var1", "Var2", "value")
+chi_sq_melt$log_value <- -log10(chi_sq_melt$value)
+
+# Plot chi-squared test results as heatmap
+outF <-  paste0(outDir,"/sequencing_platoform_categorical_variables_chi_sq.pdf")
+ggplot(data = chi_sq_melt, aes(x = Var1, y = Var2, fill = log_value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "red", na.value = "grey50", name = "-log10 p-value") +
+  #scale_fill_gradient(low = "red", high = "white", na.value = "grey50", name = "p-value") + # , trans = "reverse"
+  theme_minimal() +
+  labs(title = "Chi-squared Test of Independence for Categorical Variables", x = "Variables", y = "Variables") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(outF,height = 10, width = 10)
 
 #### perform per-patient modeling of level1 status ### 
 

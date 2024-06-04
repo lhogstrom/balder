@@ -1,14 +1,6 @@
 ---
 title: "Balder annotation matching summary"
 date: 2024-05-13
-author:
-  - name: Larson Hogstrom
-    id: lh
-    email: larsonh@uio.no
-    affiliation: 
-      - name: Oslo Cancer Hospital
-        city: Oslo
-        url: https://www.ous-research.no/institute/
 format: pdf
 editor: visual
 ---
@@ -36,9 +28,24 @@ figDir <- "../../../output/actionability_db_curration_20231220"
 dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
 
+svCompiled <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVariantTableWithSampleInfoOncokb')
+
 aa.genome.exahustive <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM exhaustiveClinicalAnnotatedPatientVariants')
 aa.genome.representative <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariants')
 aa.genome.representative.oncokb <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariantsWithOncoKB')
+```
+
+# Sample and variant counts by study
+
+```{r}
+#| echo: false
+#| include: true
+
+study_cnts <- svCompiled
+
+cnts_exhaustive_summary <- two_group_count_percentage(aa.genome.exahustive,"annotationMatchGenomicCoord","annotationMatchAAChange")
+iCols <- c("annotationMatchGenomicCoord","annotationMatchAAChange","counts_and_percent")
+knitr::kable(cnts_exhaustive_summary[,iCols], format="latex", align="l")
 ```
 
 # MOA and CIViC matching
