@@ -171,19 +171,26 @@ seqTypeCntAssay <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
 
 # compile clinical info by sequencing type
 seqTypeClinicalInfo <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
+  dplyr::group_by(Tumor_Sample_Barcode) %>% 
+  dplyr::filter(dplyr::row_number() == 1) %>% # select a single representative entry per subject
+  dplyr::ungroup() %>%
   dplyr::group_by(ONCOTREE_CODE,SEQ_ASSAY_ID_mod) %>% # SAMPLE_TYPE
   dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";"),
                    n.Metastatic=sum(SAMPLE_TYPE == "Metastasis"),
                    n.Primary=sum(SAMPLE_TYPE == "Primary"),
                    n.LocalRecurrence=sum(SAMPLE_TYPE == "LocalRecurance"),
+                   meanTumorPurity=mean(TUMOR_PURITY,na.rm=T),
                    n.NaHeme = sum(SAMPLE_TYPE == "NA or Heme"),
-                   median.age=median(AGE_AT_SEQ_REPORT),
-                   n.dead=sum(DEAD == "TRUE" | DEAD == "True"),
-                   median.IntSeqToDeath=median(INT_Seq_or_Biopsy_To_Death),
-                   n.StageI=sum(STAGE=="I" | STAGE=="1" | STAGE=="1a" | STAGE=="Ia" | STAGE=="Ib" | STAGE=="1b"),
-                   n.StageII=sum(STAGE=="II" | STAGE=="2" | STAGE=="2a" | STAGE=="IIa" | STAGE=="IIb" | STAGE=="2b")) %>%
+                   median.age=median(AGE_AT_SEQ_REPORT,na.rm=T),
+                   n.dead=sum(DEAD == "TRUE" | DEAD == "True",na.rm=T),
+                   median.IntSeqToDeath=median(INT_Seq_or_Biopsy_To_Death, na.rm=T),
+                   n.StageI=sum(STAGE=="I" | STAGE=="1" | STAGE=="1a" | STAGE=="Ia" | STAGE=="Ib" | STAGE=="1b",na.rm=T),
+                   n.StageII=sum(STAGE=="II" | STAGE=="2" | STAGE=="2a" | STAGE=="IIa" | STAGE=="IIb" | STAGE=="2b",na.rm=T)) %>%
   dplyr::arrange(desc(n.patients.total))
+outF <- paste0(outDir,"/cancer_type_assay_clinical_info.csv")
+write.table(seqTypeClinicalInfo,outF,row.names=F,quote=F,sep=",")
+
 
 iPrimOrMet <- (oncokbOnly$SAMPLE_TYPE=="Primary") | (oncokbOnly$SAMPLE_TYPE=="Metastasis")
 seqOncokBSummary <- oncokbOnly[iPrimOrMet,] %>%
