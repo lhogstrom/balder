@@ -157,8 +157,11 @@ svCompiled[is.na(svCompiled$SEQ_ASSAY_ID),"SEQ_ASSAY_ID_mod"] <- svCompiled[is.n
 
 assayCntRank <- svCompiled %>%
   dplyr::group_by(SEQ_ASSAY_ID_mod) %>%
-  dplyr::summarise(n=n()) %>% 
-  dplyr::arrange(desc(n))
+  dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>% 
+  dplyr::arrange(desc(n)) %>%
+  dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID")) 
+outF <- paste0(outDir,"/institution_seq_platoform.csv")
+write.table(assayCntRank,outF,row.names=F,quote=F,sep=",")
 
 # select assays with >N patients
 assaySelect <- assayCntRank[assayCntRank$n>5000,"SEQ_ASSAY_ID_mod"][[1]]
@@ -203,7 +206,10 @@ primMetOncokBSummary$ONCOTREE_CODE <- factor(primMetOncokBSummary$ONCOTREE_CODE,
 seqOtCTypeSummary <- seqTypeCntAssay %>%
   dplyr::left_join(seqOncokBSummary,by=c("ONCOTREE_CODE","SEQ_ASSAY_ID_mod")) %>%
   dplyr::filter(n.patients.total>50) %>%
-  dplyr::mutate(perc=100*(n.patients.matched/n.patients.total))
+  dplyr::mutate(perc=100*(n.patients.matched/n.patients.total)) %>%
+  dplyr::left_join(seqTypeClinicalInfo[,!colnames(seqTypeClinicalInfo) %in% c("n.patients.total","CANCER_TYPE")],
+                   by=c("ONCOTREE_CODE","SEQ_ASSAY_ID_mod")) %>%
+  dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" ))
 seqOtCTypeSummary$ONCOTREE_CODE <- factor(seqOtCTypeSummary$ONCOTREE_CODE, levels=unique(otCTypeSummary$ONCOTREE_CODE))
 outF <- paste0(outDir,"/oncokb_match_level_summary_by_seq_type.csv")
 write.table(seqOtCTypeSummary,outF,row.names=F,quote=F,sep=",")
@@ -274,6 +280,31 @@ level12_hits_per_subj <- oncokbOnly[iLevel1 | iLevel2,] %>%
   dplyr::summarise(nPerSub=n()) %>%
   dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) 
 
+###########################
+### feature engineering ###
+###########################
+
+# # Handle missing values
+# preProcess_missingdata <- preProcess(data, method = 'knnImpute')
+# data_imputed <- predict(preProcess_missingdata, newdata = data)
+# 
+# # Scale and center numeric variables
+# preProcess_scale <- preProcess(data_imputed[, sapply(data_imputed, is.numeric)], method = c("center", "scale"))
+# data_imputed[, sapply(data_imputed, is.numeric)] <- predict(preProcess_scale, newdata = data_imputed[, sapply(data_imputed, is.numeric)])
+# 
+# # Convert categorical variables to dummy variables
+# dummies_model <- dummyVars(ResponseVar ~ ., data = data_imputed)
+# data_dummies <- predict(dummies_model, newdata = data_imputed)
+# 
+# # Combine the response variable back with the transformed predictors
+# data_final <- cbind(data_dummies, ResponseVar = data_imputed$ResponseVar)
+# 
+# # Convert to a data frame for further processing
+# data_final <- as.data.frame(data_final)
+# 
+# # Display the final processed dataset
+# print(data_final)
+
 ###############################################
 ### modeling level1 hits by sequencing site ###
 ###############################################
@@ -298,9 +329,12 @@ modelCols <- c("perc",
                "preservation_technique")
 
 data <- seqOtCTypeSummary[iHighest & iLevel1,] %>%
-  dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) %>%
-  dplyr::select(all_of(modelCols))
-
+  #dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) %>%
+  dplyr::select(all_of(modelCols)) %>%
+  dplyr::group_by(ONCOTREE_CODE) %>%
+  dplyr::arrange(desc(perc)) %>% 
+  dplyr::mutate(actionable_perc_rank=dplyr::row_number())
+  
 # Convert categorical variables to factors (if not already factors)
 data$ONCOTREE_CODE <- factor(data$ONCOTREE_CODE, levels=unique(data$ONCOTREE_CODE))
 data$is_paired_end <- as.factor(data$is_paired_end)
@@ -316,7 +350,8 @@ train_data <- data[train_index, ]
 test_data <- data[-train_index, ]
 
 # Define the formula for the model
-formula <- perc ~ ONCOTREE_CODE + is_paired_end + library_selection + preservation_technique
+#formula <- perc ~ ONCOTREE_CODE + is_paired_end + library_selection + preservation_technique
+formula <- actionable_perc_rank ~ is_paired_end + library_selection + preservation_technique
 
 # Train the Decision Tree Regressor
 tree_model <- rpart(formula, data = train_data, method = "anova")
@@ -436,7 +471,7 @@ data$preservation_technique <- as.factor(data$preservation_technique)
 
 # Split the data into training and testing sets
 set.seed(42)
-train_index <- caret::createDataPartition(data$isOncoKbLevel1, p = 0.8, list = FALSE)
+train_index <- caret::createDataPartition(data$isOncoKbLevel1, p = 0.3, list = FALSE)
 train_data <- data[train_index, ]
 test_data <- data[-train_index, ]
 
@@ -469,5 +504,32 @@ predictions <- predict(tree_model, newdata = test_data)
 # Evaluate the model performance
 mse <- mean((predictions - test_data$perc)^2)
 cat("Mean Squared Error (MSE):", mse, "\n")
+
+
+### Apply GLM model
+
+# Fit a GLM model
+glm_model <- glm(isOncoKbLevel1 ~ ONCOTREE_CODE + is_paired_end + library_selection + preservation_technique, data = train_data, family = gaussian)
+
+# Display the summary of the model
+summary(glm_model)
+
+# Extract coefficients and convert them to a data frame
+coefficients_df <- broom::tidy(glm_model)
+
+# Plot the coefficients
+outF <-  paste0(outDir,"/glm_coefficients.pdf")
+ggplot(coefficients_df, aes(x = term, y = estimate)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.2) +
+  labs(title = "GLM Coefficients",
+       x = "Predictors",
+       y = "Coefficient Estimate") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 7)
+
+### try z-scoring proportion data by cancer type (or rank-based)
 
 
