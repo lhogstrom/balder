@@ -75,9 +75,9 @@ svAssaySummary[is.na(svAssaySummary$has.oncokb.level1),"has.oncokb.level1"] <- F
 ### create an incidence table by cancer type
 cType.sample.counts <- svCompiled %>%
   dplyr::group_by(ONCOTREE_CODE) %>%
-  dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
+  dplyr::summarise(n_patients_total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";")) %>%
-  dplyr::arrange(desc(n.patients.total))
+  dplyr::arrange(desc(n_patients_total))
 
 otCodeOncokBSummary <- oncokbOnly %>%
   dplyr::group_by(ONCOTREE_CODE,ONCOKB_HIGHEST_LEVEL_SUMMARY) %>%
@@ -87,7 +87,7 @@ otCodeOncokBSummary <- oncokbOnly %>%
 
 otCTypeSummary <- cType.sample.counts %>%
   dplyr::left_join(otCodeOncokBSummary,by="ONCOTREE_CODE") %>%
-  dplyr::mutate(perc=100*(n.patients.matched/n.patients.total))
+  dplyr::mutate(perc=100*(n.patients.matched/n_patients_total))
 otCTypeSummary$ONCOTREE_CODE <- factor(otCTypeSummary$ONCOTREE_CODE, levels=unique(otCTypeSummary$ONCOTREE_CODE))
 outF <- paste0(outDir,"/oncokb_match_level_summary_by_ot_code.csv")
 write.table(otCTypeSummary,outF,row.names=F,quote=F,sep=",")
@@ -168,9 +168,9 @@ assaySelect <- assayCntRank[assayCntRank$n>5000,"SEQ_ASSAY_ID_mod"][[1]]
 
 seqTypeCntAssay <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
   dplyr::group_by(ONCOTREE_CODE,SEQ_ASSAY_ID_mod) %>% # SAMPLE_TYPE
-  dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
+  dplyr::summarise(n_patients_total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";")) %>%
-  dplyr::arrange(desc(n.patients.total))
+  dplyr::arrange(desc(n_patients_total))
 
 # compile clinical info by sequencing type
 seqTypeClinicalInfo <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
@@ -178,19 +178,30 @@ seqTypeClinicalInfo <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,]
   dplyr::filter(dplyr::row_number() == 1) %>% # select a single representative entry per subject
   dplyr::ungroup() %>%
   dplyr::group_by(ONCOTREE_CODE,SEQ_ASSAY_ID_mod) %>% # SAMPLE_TYPE
-  dplyr::summarise(n.patients.total=dplyr::n_distinct(Tumor_Sample_Barcode),
+  dplyr::summarise(n_patients_total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";"),
-                   n.Metastatic=sum(SAMPLE_TYPE == "Metastasis"),
-                   n.Primary=sum(SAMPLE_TYPE == "Primary"),
-                   n.LocalRecurrence=sum(SAMPLE_TYPE == "LocalRecurance"),
+                   n_Metastatic=sum(SAMPLE_TYPE == "Metastasis"),
+                   n_Primary=sum(SAMPLE_TYPE == "Primary"),
+                   met_to_primary_ratio=n_Metastatic/n_Primary,
+                   n_LocalRecurrence=sum(SAMPLE_TYPE == "LocalRecurance"),
+                   perc_LocalRecurrence=n_LocalRecurrence/n_patients_total,
                    meanTumorPurity=mean(TUMOR_PURITY,na.rm=T),
-                   n.NaHeme = sum(SAMPLE_TYPE == "NA or Heme"),
-                   median.age=median(AGE_AT_SEQ_REPORT,na.rm=T),
-                   n.dead=sum(DEAD == "TRUE" | DEAD == "True",na.rm=T),
-                   median.IntSeqToDeath=median(INT_Seq_or_Biopsy_To_Death, na.rm=T),
-                   n.StageI=sum(STAGE=="I" | STAGE=="1" | STAGE=="1a" | STAGE=="Ia" | STAGE=="Ib" | STAGE=="1b",na.rm=T),
-                   n.StageII=sum(STAGE=="II" | STAGE=="2" | STAGE=="2a" | STAGE=="IIa" | STAGE=="IIb" | STAGE=="2b",na.rm=T)) %>%
-  dplyr::arrange(desc(n.patients.total))
+                   anyTumorPurityInfo=any(!is.na(TUMOR_PURITY)),
+                   n_NaHeme = sum(SAMPLE_TYPE == "NA or Heme"),
+                   perc_NaHeme=n_NaHeme/n_patients_total,
+                   median_age=median(AGE_AT_SEQ_REPORT,na.rm=T),
+                   n_dead=sum(DEAD == "TRUE" | DEAD == "True",na.rm=T),
+                   perc_dead=n_dead/n_patients_total,
+                   median_IntSeqToDeath=median(INT_Seq_or_Biopsy_To_Death, na.rm=T),
+                   n_StageI=sum(STAGE=="I" | STAGE=="1" | STAGE=="1a" | STAGE=="Ia" | STAGE=="IA" |  STAGE=="Ib" | STAGE=="IB" | STAGE=="1b", na.rm=T),
+                   perc_StageI=n_StageI/n_patients_total,
+                   n_StageII=sum(STAGE=="II" | STAGE=="2" | STAGE=="2a" | STAGE=="IIa" | STAGE=="IIA" | STAGE=="IIb" | STAGE=="IIB" | STAGE=="2b", na.rm=T),
+                   perc_StageII=n_StageII/n_patients_total,
+                   n_StageIII=sum(STAGE=="III" | STAGE=="3" | STAGE=="3a" | STAGE=="IIIA" | STAGE=="IIIB" | STAGE=="3B", na.rm=T),
+                   perc_StageIII=n_StageIII/n_patients_total,
+                   n_StageIV=sum(STAGE=="IV" | STAGE=="M1" | STAGE=="M2" | STAGE=="M3", na.rm=T),
+                   perc_StageIV=n_StageIV/n_patients_total) %>%
+  dplyr::arrange(desc(n_patients_total))
 outF <- paste0(outDir,"/cancer_type_assay_clinical_info.csv")
 write.table(seqTypeClinicalInfo,outF,row.names=F,quote=F,sep=",")
 
@@ -205,9 +216,9 @@ primMetOncokBSummary$ONCOTREE_CODE <- factor(primMetOncokBSummary$ONCOTREE_CODE,
 
 seqOtCTypeSummary <- seqTypeCntAssay %>%
   dplyr::left_join(seqOncokBSummary,by=c("ONCOTREE_CODE","SEQ_ASSAY_ID_mod")) %>%
-  dplyr::filter(n.patients.total>50) %>%
-  dplyr::mutate(perc=100*(n.patients.matched/n.patients.total)) %>%
-  dplyr::left_join(seqTypeClinicalInfo[,!colnames(seqTypeClinicalInfo) %in% c("n.patients.total","CANCER_TYPE")],
+  dplyr::filter(n_patients_total>50) %>%
+  dplyr::mutate(perc=100*(n.patients.matched/n_patients_total)) %>%
+  dplyr::left_join(seqTypeClinicalInfo[,!colnames(seqTypeClinicalInfo) %in% c("n_patients_total","CANCER_TYPE")],
                    by=c("ONCOTREE_CODE","SEQ_ASSAY_ID_mod")) %>%
   dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" ))
 seqOtCTypeSummary$ONCOTREE_CODE <- factor(seqOtCTypeSummary$ONCOTREE_CODE, levels=unique(otCTypeSummary$ONCOTREE_CODE))
@@ -280,6 +291,76 @@ level12_hits_per_subj <- oncokbOnly[iLevel1 | iLevel2,] %>%
   dplyr::summarise(nPerSub=n()) %>%
   dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) 
 
+##################################
+### proportion of null entries ###
+##################################
+
+# what proportion of each column is null
+perSubjVar <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
+  dplyr::group_by(Tumor_Sample_Barcode) %>% 
+  dplyr::filter(dplyr::row_number() == 1) # select a single representative entry per subject
+#  dplyr::ungroup() %>%
+  
+
+
+
+
+
+
+na_proportions_raw <- perSubjVar %>%
+  dplyr::group_by(SEQ_ASSAY_ID_mod) %>% 
+  summarise(across(tidyselect::everything(), ~ mean(is.na(.)))) #%>%
+  #summarise(dplyr::across(clinical_cols, ~ mean(is.na(.)))) %>%
+  #pivot_longer(cols = everything(), names_to = "column", values_to = "proportion")
+outF <- paste0(outDir,"/null_entry_counts.csv")
+write.table(na_proportions_raw,outF,row.names=F,quote=F,sep=",")
+
+
+
+# na_proportions_summary <- seqOtCTypeSummary %>%
+#   dplyr::group_by(SEQ_ASSAY_ID_mod) %>% 
+#   #summarise(across(tidyselect::everything(), ~ mean(is.na(.)))) %>%
+#   summarise(dplyr::across(clinical_cols, ~ mean(is.na(.)))) %>%
+#   pivot_longer(cols = everything(), names_to = "column", values_to = "proportion")
+# 
+
+#clinical_cols
+
+nullClinInfo <-  perSubjVar %>%
+  dplyr::group_by(SEQ_ASSAY_ID_mod) %>% # SAMPLE_TYPE
+  dplyr::summarise(n_patients_total=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";"),
+                   n_Metastatic=sum(SAMPLE_TYPE == "Metastasis"),
+                   n_Primary=sum(SAMPLE_TYPE == "Primary"),
+                   met_to_primary_ratio=n_Metastatic/n_Primary,
+                   n_LocalRecurrence=sum(SAMPLE_TYPE == "LocalRecurance"),
+                   perc_LocalRecurrence=n_LocalRecurrence/n_patients_total,
+                   meanTumorPurity=mean(TUMOR_PURITY,na.rm=T),
+                   anyTumorPurityInfo=any(!is.na(TUMOR_PURITY)),
+                   n_NaHeme = sum(SAMPLE_TYPE == "NA or Heme"),
+                   perc_NaHeme=n_NaHeme/n_patients_total,
+                   median_age=median(AGE_AT_SEQ_REPORT,na.rm=T),
+                   n_dead=sum(DEAD == "TRUE" | DEAD == "True",na.rm=T),
+                   perc_dead=n_dead/n_patients_total,
+                   median_IntSeqToDeath=median(INT_Seq_or_Biopsy_To_Death, na.rm=T),
+                   n_StageI=sum(STAGE=="I" | STAGE=="1" | STAGE=="1a" | STAGE=="Ia" | STAGE=="IA" |  STAGE=="Ib" | STAGE=="IB" | STAGE=="1b", na.rm=T),
+                   perc_StageI=n_StageI/n_patients_total,
+                   n_StageII=sum(STAGE=="II" | STAGE=="2" | STAGE=="2a" | STAGE=="IIa" | STAGE=="IIA" | STAGE=="IIb" | STAGE=="IIB" | STAGE=="2b", na.rm=T),
+                   perc_StageII=n_StageII/n_patients_total,
+                   n_StageIII=sum(STAGE=="III" | STAGE=="3" | STAGE=="3a" | STAGE=="IIIA" | STAGE=="IIIB" | STAGE=="3B", na.rm=T),
+                   perc_StageIII=n_StageIII/n_patients_total,
+                   n_StageIV=sum(STAGE=="IV" | STAGE=="M1" | STAGE=="M2" | STAGE=="M3", na.rm=T),
+                   perc_StageIV=n_StageIV/n_patients_total) %>%
+  dplyr::arrange(desc(n_patients_total))
+outF <- paste0(outDir,"/cancer_type_assay_clinical_info.csv")
+write.table(seqTypeClinicalInfo,outF,row.names=F,quote=F,sep=",")
+
+
+
+############################
+### exploratory plotting ###
+############################
+
 ###########################
 ### feature engineering ###
 ###########################
@@ -319,14 +400,29 @@ highest_c_counts <- unique(otCTypeSummary$ONCOTREE_CODE)[1:15]
 iHighest <- seqOtCTypeSummary$ONCOTREE_CODE %in% as.character(highest_c_counts)
 iLevel1 <- grepl("LEVEL_1",seqOtCTypeSummary$ONCOKB_HIGHEST_LEVEL_SUMMARY)
 
+clinical_cols <- c("median_age",
+                   "met_to_primary_ratio",
+                   "meanTumorPurity",
+                   "anyTumorPurityInfo",
+                   "perc_LocalRecurrence",
+                   "perc_NaHeme",
+                   "perc_dead",
+                   "perc_StageI",
+                   "perc_StageII",
+                   "perc_StageIII",
+                   "perc_StageIV",
+                   "median_IntSeqToDeath")
+technical_cols <- c("is_paired_end",
+                    "library_selection",
+                    "platform",
+                    "number_of_genes",
+                    "calling_strategy",
+                    "preservation_technique")
+
 modelCols <- c("perc",
                "ONCOTREE_CODE",
-               "is_paired_end",
-               "library_selection",
-               "platform",
-               "number_of_genes",
-               "calling_strategy",
-               "preservation_technique")
+               clinical_cols,
+               technical_cols)
 
 data <- seqOtCTypeSummary[iHighest & iLevel1,] %>%
   #dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID" )) %>%
@@ -380,7 +476,9 @@ predictions <- predict(tree_model, newdata = test_data)
 mse <- mean((predictions - test_data$perc)^2)
 cat("Mean Squared Error (MSE):", mse, "\n")
 
-#### 
+###########################################
+### chi-sq test for categorical columns ###
+###########################################
 
 # feature analysis 
 library(corrplot)
@@ -430,7 +528,52 @@ ggplot(data = chi_sq_melt, aes(x = Var1, y = Var2, fill = log_value)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ggsave(outF,height = 10, width = 10)
 
-#### perform per-patient modeling of level1 status ### 
+############################################
+### corr structure of clinical variables ###
+############################################
+library(corrplot)
+
+clin_train <- train_data[,clinical_cols]
+
+# Compute Pearson correlation matrix
+pearson_corr <- cor(clin_train, 
+                    use = "pairwise.complete.obs",
+                    method = "pearson")
+
+# Visualize the Pearson correlation matrix
+outF <-  paste0(outDir,"/clinical_factor_pairwise_pearson_corr.pdf")
+pdf(outF, width = 10, height = 10)
+corrplot(pearson_corr, method = "color", type = "upper", 
+         addCoef.col = "black", tl.col = "black", tl.srt = 45, 
+         title = "Pearson Correlation Matrix", mar = c(0,0,1,0))
+dev.off()
+
+# Compute spearman correlation matrix
+spearman_corr <- cor(clin_train, 
+                    #use = "pairwise.complete.obs",
+                    method = "spearman")
+
+# Visualize the Pearson correlation matrix
+outF <-  paste0(outDir,"/clinical_factor_pairwise_spearman_corr.pdf")
+pdf(outF, width = 10, height = 10)
+corrplot(spearman_corr, method = "color", type = "upper", 
+         addCoef.col = "black", tl.col = "black", tl.srt = 45, 
+         title = "Spearman Correlation Matrix", mar = c(0,0,1,0))
+dev.off()
+
+### proportion of null values
+# na_proportions <- train_data %>%
+#   summarise_all(~ mean(is.na(.))) %>%
+#   gather(key = "column", value = "proportion")
+
+na_proportions <- train_data[,clinical_cols] %>%
+  #summarise(across(tidyselect::everything(), ~ mean(is.na(.)))) %>%
+  summarise(dplyr::across(clinical_cols, ~ mean(is.na(.)))) %>%
+  pivot_longer(cols = everything(), names_to = "column", values_to = "proportion")
+
+#####################################################
+### perform per-patient modeling of level1 status ### 
+#####################################################
 
 # create representative variant per row per subject - choose level 1 variant if avaible 
 perPatientLevel1 <- svCompiled %>%
