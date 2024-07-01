@@ -39,6 +39,13 @@ oncokbOnly <-svCompiled[svCompiled$balderVariantID %in% okBID,]
 inF <- "../../data/AACR_Project_GENIE/Release_15p0_public/assay_information.txt"
 assayInfo <- read.csv(inF,sep="\t")
 
+# SEQ_ASSAY_ID and SEQ_PIPELINE_ID
+seq_grp <- assayInfo %>%
+  dplyr::group_by(SEQ_ASSAY_ID,SEQ_PIPELINE_ID) %>%
+  dplyr::summarise(number_of_panels=n())
+outF <- paste0(outDir,"/institution_seq_platoform_IDs.csv")
+write.table(seq_grp,outF,row.names=F,quote=F,sep=",")
+
 # variant counts per subject
 svAssaySummary <- svCompiled %>%
   filter(!is.na(SEQ_ASSAY_ID)) %>%
@@ -74,7 +81,9 @@ svAssaySummary[is.na(svAssaySummary$has.oncokb.level1),"has.oncokb.level1"] <- F
 
 ### create an incidence table by cancer type
 cType.sample.counts <- svCompiled %>%
-  dplyr::group_by(ONCOTREE_CODE) %>%
+  #dplyr::group_by(ONCOTREE_CODE) %>%
+  #group_by(!!sym("ONCOTREE_CODE")) %>%
+  group_by(as.symbol("ONCOTREE_CODE")) %>%
   dplyr::summarise(n_patients_total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";")) %>%
   dplyr::arrange(desc(n_patients_total))
@@ -300,19 +309,34 @@ perSubjVar <- svCompiled[svCompiled$SEQ_ASSAY_ID_mod %in% assaySelect,] %>%
   dplyr::group_by(Tumor_Sample_Barcode) %>% 
   dplyr::filter(dplyr::row_number() == 1) # select a single representative entry per subject
 #  dplyr::ungroup() %>%
-  
 
+nullCnts <- data.frame()  
+i<-1
+colList <- colnames(perSubjVar) 
+for (x in colList[-length(colList)]) {
+  for (y in unique(perSubjVar$SEQ_ASSAY_ID_mod)) {
+    iSeq <- perSubjVar$SEQ_ASSAY_ID_mod == y
+    selectCol <- perSubjVar[iSeq,x]
+    iNull <- is.na(selectCol) | (selectCol=="")
+    
+    nullCnts[i,"column"] <- x
+    nullCnts[i,"SEQ_ASSAY_ID_mod"] <- y
+    nullCnts[i,"proportion_null"] <- mean(iNull)
+    i<-i+1
+  }
+}
 
-
-
-
+nullCntsWide <- nullCnts %>%
+  pivot_wider(names_from = column,values_from=proportion_null)
+outF <- paste0(outDir,"/null_entry_counts_v1.csv")
+write.table(na_proportions_raw,outF,row.names=F,quote=F,sep=",")
 
 na_proportions_raw <- perSubjVar %>%
   dplyr::group_by(SEQ_ASSAY_ID_mod) %>% 
   summarise(across(tidyselect::everything(), ~ mean(is.na(.)))) #%>%
   #summarise(dplyr::across(clinical_cols, ~ mean(is.na(.)))) %>%
   #pivot_longer(cols = everything(), names_to = "column", values_to = "proportion")
-outF <- paste0(outDir,"/null_entry_counts.csv")
+outF <- paste0(outDir,"/null_entry_counts_v2.csv")
 write.table(na_proportions_raw,outF,row.names=F,quote=F,sep=",")
 
 
@@ -324,7 +348,6 @@ write.table(na_proportions_raw,outF,row.names=F,quote=F,sep=",")
 #   pivot_longer(cols = everything(), names_to = "column", values_to = "proportion")
 # 
 
-#clinical_cols
 
 nullClinInfo <-  perSubjVar %>%
   dplyr::group_by(SEQ_ASSAY_ID_mod) %>% # SAMPLE_TYPE
@@ -675,4 +698,83 @@ ggsave(outF,height = 7, width = 7)
 
 ### try z-scoring proportion data by cancer type (or rank-based)
 
+##################
+### assay info ###
+##################
 
+inF <- "../../data/AACR_Project_GENIE/Release_15p0_public/genomic_information.txt"
+genomicInfo <- read.csv(inF,sep="\t")
+
+# SEQ_ASSAY_ID and SEQ_PIPELINE_ID
+seq_grp <- assayInfo %>%
+  dplyr::group_by(SEQ_ASSAY_ID,SEQ_PIPELINE_ID) %>%
+  dplyr::summarise(number_of_panels=n())
+outF <- paste0(outDir,"/institution_seq_platoform_IDs.csv")
+write.table(seq_grp,outF,row.names=F,quote=F,sep=",")
+
+table(svCompiled$SEQ_ASSAY_ID %in% genomicInfo$SEQ_ASSAY_ID,svCompiled$SourceStudy)
+
+#
+length(unique(genomicInfo$Hugo_Symbol))
+
+# rank genes according to which genees were measured most frequently
+geneRank <- genomicInfo %>%
+  dplyr::group_by(Hugo_Symbol) %>%
+  dplyr::summarise(n_assays=dplyr::n_distinct(SEQ_ASSAY_ID)) %>%
+  dplyr::arrange(desc(n_assays))
+
+geneRank$Hugo_Symbol <- factor(geneRank$Hugo_Symbol,levels=geneRank$Hugo_Symbol)
+outF <-  paste0(outDir,"/gene_counts_by_seq_assay_ID_top.pdf")
+ggplot(geneRank[1:60,], aes(x = Hugo_Symbol, y = n_assays)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Count of assays measuring gene of interest (n=113 total)",
+       x = "gene",
+       y = "number of assays") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 10)
+
+geneRank$Hugo_Symbol <- factor(geneRank$Hugo_Symbol,levels=geneRank$Hugo_Symbol)
+outF <-  paste0(outDir,"/gene_counts_by_seq_assay_ID_all.pdf")
+ggplot(geneRank, aes(x = Hugo_Symbol, y = n_assays)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Count of assays measuring gene of interest (n=113 total)",
+       x = "gene",
+       y = "number of assays") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 10)
+
+################################
+### detailed tumor type info ###
+################################
+
+c_type_count <- perSubjVar %>%
+  dplyr::group_by(CANCER_TYPE) %>%
+  dplyr::summarise(number_of_subjects=n()) %>%
+  dplyr::arrange(desc(number_of_subjects))
+
+c_type_detailed <- perSubjVar %>%
+  dplyr::group_by(CANCER_TYPE,CANCER_TYPE_DETAILED) %>%
+  dplyr::summarise(number_of_subjects=n()) %>%
+  dplyr::arrange(desc(number_of_subjects))
+outF <- paste0(outDir,"/cancer_type_detailed_counts.txt")
+write.table(c_type_detailed,outF,row.names=F,quote=F,sep="\t")
+
+iTop <- c_type_detailed$CANCER_TYPE %in% c_type_count$CANCER_TYPE[1:10]
+c_type_subset <- c_type_detailed[iTop,]
+
+c_type_subset$CANCER_TYPE_DETAILED <- factor(c_type_subset$CANCER_TYPE_DETAILED,levels=c_type_subset$CANCER_TYPE_DETAILED)
+outF <-  paste0(outDir,"/cancer_type_detailed_counts.pdf")
+ggplot(c_type_detailed[1:20,], aes(x = CANCER_TYPE_DETAILED, y = number_of_subjects)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Sample counts for each detailed cancer type categorizaiton (most common cancers)",
+       x = "gene",
+       y = "number of assays") +
+  facet_wrap(CANCER_TYPE ~ ., scales="free_x") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 14, width = 10)
