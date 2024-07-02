@@ -743,9 +743,180 @@ ggplot(geneRank, aes(x = Hugo_Symbol, y = n_assays)) +
        x = "gene",
        y = "number of assays") +
   theme_minimal()+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(axis.text.x = element_blank())+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 7, width = 10)
+
+## what proportion actionable mutation appear in top ranking genes?
+iLevel1 <- grepl("1",oncokbOnly$ONCOKB_HIGHEST_LEVEL_SUMMARY)
+lvl1_compiled <- oncokbOnly[iLevel1,]
+
+lvl1_gene_cnts <- lvl1_compiled %>%
+  dplyr::group_by(Hugo_Symbol) %>%
+  dplyr::summarise(n_patients=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n_patients))
+
+rank_lvl1 <- geneRank %>%
+  dplyr::left_join(lvl1_gene_cnts,by="Hugo_Symbol") 
+rank_lvl1$n_patients[is.na(rank_lvl1$n_patients)] <- 0  
+rank_lvl1$n_patients_cumsum <- cumsum(rank_lvl1$n_patients)
+rank_lvl1$cumsum_perc_patients <- 100 * (rank_lvl1$n_patients_cumsum / length(unique(svCompiled$Tumor_Sample_Barcode)))
+rank_lvl1$gene_rank <- rownames(rank_lvl1)
+
+rank_lvl1$Hugo_Symbol <- factor(rank_lvl1$Hugo_Symbol,levels=geneRank$Hugo_Symbol)
+outF <-  paste0(outDir,"/cumulative_sum_patients_with_level1_gene_mutation.pdf")
+ggplot(rank_lvl1, aes(x = Hugo_Symbol, y = cumsum_perc_patients)) +
+  geom_point()+
+  #geom_bar(stat = "identity") +
+  labs(title = "Cumulative sum of patients with a level 1 mutaiton \n genes ranked by most commonly measured in panels",
+       x = "gene rank",
+       y = "percent of patients") +
+  theme_minimal()+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(axis.text.x = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 10)
+
+rLvl1_long <- rank_lvl1[,c("Hugo_Symbol","n_assays","cumsum_perc_patients")] %>%
+  tidyr::pivot_longer(!Hugo_Symbol, names_to = "type", values_to = "value") 
+  
+rLvl1_long$Hugo_Symbol <- factor(rLvl1_long$Hugo_Symbol,levels=geneRank$Hugo_Symbol)
+outF <-  paste0(outDir,"/cumulative_sum_patients_with_level1_gene_mutation_and_prop.pdf")
+ggplot(rLvl1_long, aes(x = Hugo_Symbol, y = value)) +
+  geom_point()+
+  facet_grid(type ~ ., scales="free_y")+
+  labs(title = "Cumulative sum of patients with a level 1 mutaiton \n genes ranked by most commonly measured in panels",
+       x = "gene rank",
+       y = "percent of patients") +
+  theme_minimal()+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(axis.text.x = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 10)
+
+outF <-  paste0(outDir,"/cumulative_sum_patients_with_level1_gene_mutation_and_prop_top.pdf")
+ggplot(rLvl1_long[1:180,], aes(x = Hugo_Symbol, y = value)) +
+  geom_point()+
+  facet_grid(type ~ ., scales="free_y")+
+  labs(title = "Cumulative sum of patients with a level 1 mutaiton \n genes ranked by most commonly measured in panels",
+       x = "gene rank",
+       y = "percent of patients") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 12)
+
+# what are examples of genes with high frequency, but low panel rank? 
+iHighRank <- as.numeric(rank_lvl1$gene_rank) >= 30
+iHighPatient <- rank_lvl1$n_patients >= 300
+unexpected_hits <- rank_lvl1[iHighRank & iHighPatient,]
+
+# print info on unexpected hits
+for (x in unexpected_hits$Hugo_Symbol) {
+  print(x)
+  iGeneMatch = lvl1_compiled$Hugo_Symbol==x
+  print("actionability type:")
+  print(table(lvl1_compiled[iGeneMatch,"ONCOKB_HIGHEST_LEVEL_SUMMARY"]))
+  print("disease level counts:")
+  print(table(lvl1_compiled[iGeneMatch,"level_1_disease"]))
+  print(table(lvl1_compiled[iGeneMatch,"level_3_disease"]))
+  print("study counts:")
+  print(table(lvl1_compiled[iGeneMatch,"SourceStudy"]))
+  print("panel types:")
+  print(table(lvl1_compiled[iGeneMatch,"SEQ_ASSAY_ID_mod"]))
+  print("--------")
+}
+
+
+### pairwise intersection of genes among panels
+runPairwiseCalc <- 0
+if (runPairwiseCalc==1){
+  pairwiseIntersection <- data.frame()
+  panels <- unique(genomicInfo$SEQ_ASSAY_ID)
+  i <- 1
+  for (ix in seq(length(panels))) {
+    x <- panels[ix]
+    xg <- genomicInfo[genomicInfo$SEQ_ASSAY_ID==x,]
+    xgenes <- unique(xg$Hugo_Symbol)
+    for (iy in seq(length(panels))) {
+      y <- panels[iy]
+      yg <- genomicInfo[genomicInfo$SEQ_ASSAY_ID==y,]
+      ygenes <- unique(yg$Hugo_Symbol)
+      if (ix > iy) {
+        print("")
+      }
+      else {
+        print(ix) 
+        print(iy) 
+        print("----")
+        pairwiseIntersection[i,"panel_1"] <- x
+        pairwiseIntersection[i,"panel_2"] <- y
+        pairwiseIntersection[i,"panel_1_n_genes"] <- length(xgenes)
+        pairwiseIntersection[i,"panel_2_n_genes"] <- length(ygenes)
+        pairwiseIntersection[i,"panel_1_2_intersection"] <- length(intersect(xgenes,ygenes))
+      }
+      i <- i+1
+    }
+  }
+  pairwiseIntersection$intersection_as_prop_of_panel1 <- pairwiseIntersection$panel_1_2_intersection / pairwiseIntersection$panel_1_n_genes
+}
+
+### genomic intersection plots
+#geneList <- c("KRAS","TP53","ABL1","EGFR")
+[geneList <- geneRank$Hugo_Symbol[1:16]
+
+for (gene in geneList) {
+  # hit info
+  lvl1PosCnts <- lvl1_compiled[lvl1_compiled$Hugo_Symbol==gene,] %>%
+    dplyr::group_by(Start_Position) %>%
+    dplyr::summarise(n=n()) %>%
+    dplyr::arrange(desc(n)) %>%
+    dplyr::rename(coordinate=Start_Position,
+                  size=n) %>%
+    dplyr::mutate(pos="actionable_count",
+                  SEQ_ASSAY_ID="1_observed_events",
+                  type="observed")
+    
+  # genomic info
+  geneSubset <- genomicInfo[genomicInfo$Hugo_Symbol==gene,]
+  geneSubset$region_ID <- seq(1,dim(geneSubset)[1])
+  geneSubset$assay_ID <- factor(geneSubset$SEQ_ASSAY_ID,labels=seq(1,length(unique(geneSubset$SEQ_ASSAY_ID))))
+  geneSubset$assay_ID <- as.numeric(geneSubset$assay_ID)
+  geneSubset$region_length <- geneSubset$End_Position - geneSubset$Start_Position
+  geneSubset$type <- "panel"
+  geneSubset$size <- 1
+  
+  intervalPlotDf <- geneSubset[,c("Start_Position","End_Position","SEQ_ASSAY_ID","size","type")] %>%
+    tidyr::pivot_longer(c("Start_Position","End_Position"), names_to = "pos", values_to = "coordinate")
+  
+  densityPlotDf <- rbind(intervalPlotDf,lvl1PosCnts[,colnames(intervalPlotDf)])
+  
+  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,".pdf")
+  ggplot(intervalPlotDf, aes(x = coordinate, y = SEQ_ASSAY_ID, shape = pos)) +
+    geom_point()+
+    #facet_grid(type ~ ., scales="free_y")+
+    labs(title = paste0(gene, "\nGenomic coordiantes tested by panel"),
+         x = "genomic coordinate",
+         y = "panel") +
+    theme_minimal()+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(outF,height = 18, width = 12)
+  
+  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,"_with_counts.pdf")
+  ggplot(densityPlotDf, aes(x = coordinate, y = SEQ_ASSAY_ID, shape = pos, size=size,color=type)) +
+    geom_point(alpha=.2,size=1,color="black")+
+    geom_point(alpha=.6)+
+    #facet_grid(type ~ ., scales="free_y")+
+    labs(title = paste0(gene, "\nGenomic coordiantes tested by panel"),
+         x = "genomic coordinate",
+         y = "panel") +
+    theme_minimal()+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(outF,height = 18, width = 12)
+}]
 
 ################################
 ### detailed tumor type info ###
@@ -778,3 +949,4 @@ ggplot(c_type_detailed[1:20,], aes(x = CANCER_TYPE_DETAILED, y = number_of_subje
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 14, width = 10)
+
