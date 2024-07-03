@@ -864,7 +864,8 @@ if (runPairwiseCalc==1){
 
 ### genomic intersection plots
 #geneList <- c("KRAS","TP53","ABL1","EGFR")
-[geneList <- geneRank$Hugo_Symbol[1:16]
+geneList <- c("FBXW7","PPP2R1A","CCNE1")
+#geneList <- geneRank$Hugo_Symbol[1:16]
 
 for (gene in geneList) {
   # hit info
@@ -916,7 +917,7 @@ for (gene in geneList) {
     theme(axis.text.x = element_text(angle = 90, hjust = 1))+
     theme(plot.title = element_text(hjust = 0.5))
   ggsave(outF,height = 18, width = 12)
-}]
+}
 
 ################################
 ### detailed tumor type info ###
