@@ -869,9 +869,12 @@ geneList <- c("FBXW7","PPP2R1A","CCNE1")
 
 for (gene in geneList) {
   # hit info
-  lvl1PosCnts <- lvl1_compiled[lvl1_compiled$Hugo_Symbol==gene,] %>%
+  lvl1_comp_gene <- lvl1_compiled[lvl1_compiled$Hugo_Symbol==gene,]
+  nPosTotal <- dim(lvl1_comp_gene)[1]
+  lvl1PosCnts <- lvl1_comp_gene  %>%
     dplyr::group_by(Start_Position) %>%
-    dplyr::summarise(n=n()) %>%
+    dplyr::summarise(n=n(),
+                     geneLevelFreq=n/nPosTotal) %>%
     dplyr::arrange(desc(n)) %>%
     dplyr::rename(coordinate=Start_Position,
                   size=n) %>%
@@ -917,6 +920,15 @@ for (gene in geneList) {
     theme(axis.text.x = element_text(angle = 90, hjust = 1))+
     theme(plot.title = element_text(hjust = 0.5))
   ggsave(outF,height = 18, width = 12)
+  
+  # create position-level evaluations
+  lvl1PosCnts$temp_key <- 1
+  geneSubset$temp_key <- 1
+  
+  # Use merge to create the Cartesian product
+  posTargetMerged <- merge(lvl1PosCnts[,!colnames(lvl1PosCnts) %in% c("SEQ_ASSAY_ID")], 
+                  geneSubset[,!colnames(geneSubset) %in% c("type","size","")], by = "temp_key")
+  
 }
 
 ################################
