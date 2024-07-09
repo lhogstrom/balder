@@ -864,10 +864,12 @@ if (runPairwiseCalc==1){
 
 ### genomic intersection plots
 #geneList <- c("KRAS","TP53","ABL1","EGFR")
-geneList <- c("FBXW7","PPP2R1A","CCNE1")
-#geneList <- geneRank$Hugo_Symbol[1:16]
+#geneList <- c("FBXW7","PPP2R1A","CCNE1")
+geneList <- geneRank$Hugo_Symbol[1:16]
 
+posPanCntFull <- data.frame()
 for (gene in geneList) {
+  print(gene)
   # hit info
   lvl1_comp_gene <- lvl1_compiled[lvl1_compiled$Hugo_Symbol==gene,]
   nPosTotal <- dim(lvl1_comp_gene)[1]
@@ -929,7 +931,80 @@ for (gene in geneList) {
   posTargetMerged <- merge(lvl1PosCnts[,!colnames(lvl1PosCnts) %in% c("SEQ_ASSAY_ID")], 
                   geneSubset[,!colnames(geneSubset) %in% c("type","size","")], by = "temp_key")
   
+  iGrtr <- posTargetMerged$coordinate >= posTargetMerged$Start_Position
+  iLst <- posTargetMerged$coordinate <= posTargetMerged$End_Position
+  posTargetMerged$posInTarget <- iGrtr & iLst
+  
+  # for each position how many panels does it appear in? 
+  nPanelsMeasuringGene <- length(unique(posTargetMerged$SEQ_ASSAY_ID))
+  nPanelsAll <- length(unique(genomicInfo$SEQ_ASSAY_ID))
+  posPanCnt <- posTargetMerged %>%
+    dplyr::filter(posInTarget) %>%
+    dplyr::group_by(coordinate) %>%
+    dplyr::summarise(n=dplyr::n_distinct(SEQ_ASSAY_ID),
+                     geneLevelFreq=mean(geneLevelFreq),
+                     percPanelsMeasuringGene=n/nPanelsMeasuringGene,
+                     percPanlesAll=n/nPanelsAll,
+                     Feature_Type=paste0(unique(Feature_Type),collapse=";")) %>%
+    dplyr::arrange(desc(n))
+  
+  posPanCnt$gene <- gene
+  posPanCntFull <- rbind(posPanCntFull,posPanCnt)
+  
+  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,"_freq_by_panel_coverage.pdf")
+  ggplot(posPanCnt, aes(x = geneLevelFreq, y = percPanelsMeasuringGene, color=Feature_Type)) +
+    geom_point(alpha=.6)+
+    labs(title = paste0(gene, "\nActionable genomic positions tested by panel"),
+         x = "Frequency of actionable event at position",
+         y = "Fraction of panels measuring position") +
+    ylim(0,1)+
+    theme_minimal()+
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(outF,height = 7, width = 7)
+  
+  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,"_freq_by_panel_coverage_log.pdf")
+  ggplot(posPanCnt, aes(x = geneLevelFreq, y = percPanelsMeasuringGene, color=Feature_Type)) +
+    geom_point(alpha=.6)+
+    scale_x_log10(
+     breaks = scales::trans_breaks("log10", function(x) 10^x),
+     labels = scales::trans_format("log10", scales::math_format(10^.x))
+    )+
+    labs(title = paste0(gene, "\nActionable genomic positions tested by panel"),
+         x = "Frequency of actionable event at position",
+         y = "Fraction of panels measuring position") +
+    ylim(0,1)+
+    theme_minimal()+
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(outF,height = 7, width = 7)
+  
 }
+
+outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_1_freq_by_panel_coverage.pdf")
+ggplot(posPanCntFull, aes(x = geneLevelFreq, y = percPanelsMeasuringGene, color=gene)) +
+  geom_point(alpha=.6)+
+  labs(title = paste0("Actionable genomic positions tested by panel"),
+       x = "Frequency of actionable event at position",
+       y = "Fraction of panels measuring position") +
+  ylim(0,1)+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 7)
+
+outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_1_freq_by_panel_coverage_log.pdf")
+ggplot(posPanCntFull, aes(x = geneLevelFreq, y = percPanelsMeasuringGene, color=gene)) +
+  geom_point(alpha=.6)+
+  labs(title = paste0("Actionable genomic positions tested by panel"),
+       x = "Frequency of actionable event at position",
+       y = "Fraction of panels measuring position") +
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  )+
+  ylim(0,1)+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 7)
+
 
 ################################
 ### detailed tumor type info ###
@@ -963,3 +1038,31 @@ ggplot(c_type_detailed[1:20,], aes(x = CANCER_TYPE_DETAILED, y = number_of_subje
   theme(plot.title = element_text(hjust = 0.5))
 ggsave(outF,height = 14, width = 10)
 
+#####################################
+### summary table by assays used ####
+#####################################
+svCompiledAssay <- svCompiled %>%
+  dplyr::left_join(assayInfo,by="SEQ_ASSAY_ID")
+
+# study, institution, assay counts
+institution_summary <- svCompiledAssay %>%
+  dplyr::mutate(assay_type=paste0(library_selection,"-",platform,"-",preservation_technique)) %>%
+  dplyr::group_by(SourceStudy,Center) %>%
+  dplyr::summarise(n_subjects=dplyr::n_distinct(Tumor_Sample_Barcode),
+                   n_assays_used=dplyr::n_distinct(SEQ_ASSAY_ID_mod),
+                   assay_types=paste0(unique(assay_type),collapse=";")) %>%
+  dplyr::arrange(desc(n_subjects))
+outF <- paste0(outDir,"/institution_and_assay_sample_counts.txt")
+write.table(institution_summary,outF,row.names=F,quote=F,sep="\t")
+
+arbitrary_variant_per_subject <- svCompiledAssay %>%
+  dplyr::group_by(Tumor_Sample_Barcode) %>%
+  dplyr::filter(dplyr::row_number()==1) # pick a representative sample
+
+# FFPE and PCR/hybrid capture proportions
+#  plyr::summarise(n_FFPE=sum(preservation_technique=="FFPE"))
+
+# most common cancer types, race, age, demographic, etc
+
+# cancer type counts by center
+top_n_cancer_types <- arbitrary_variant_per_subject %>%  
