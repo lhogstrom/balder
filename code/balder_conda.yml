@@ -15,4 +15,12 @@ dependencies:
   - pip
   - pip:
       - adjustText==0.8
+  - nextflow
   - r-base=4.3.2
+  - r-devtools
+  - r-dplyr
+  - r-tidyr
+  - r-DBI
+postBuild:
+  - R -e "devtools::install_github('sigven/phenOncoX')"
+  - R -e "devtools::install_github('r-dbi/RSQLite')"

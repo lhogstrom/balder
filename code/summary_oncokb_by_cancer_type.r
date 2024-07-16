@@ -7,7 +7,7 @@ source("R/snv_indel_annotation.R")
 source("R/utils.R")
 
 ### connect to result DB and get variants
-outDir <- "../../output/oncokb_cancer_type_summary_20240528"
+outDir <- "../../output/oncokb_cancer_type_summary_202400714"
 bDir <- "../../data/processed/balderResultsDb"
 dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
@@ -82,8 +82,8 @@ svAssaySummary[is.na(svAssaySummary$has.oncokb.level1),"has.oncokb.level1"] <- F
 ### create an incidence table by cancer type
 cType.sample.counts <- svCompiled %>%
   #dplyr::group_by(ONCOTREE_CODE) %>%
-  #group_by(!!sym("ONCOTREE_CODE")) %>%
-  group_by(as.symbol("ONCOTREE_CODE")) %>%
+  group_by(!!sym("ONCOTREE_CODE")) %>%
+  #group_by(as.symbol("ONCOTREE_CODE")) %>%
   dplyr::summarise(n_patients_total=dplyr::n_distinct(Tumor_Sample_Barcode),
                    CANCER_TYPE=paste0(unique(CANCER_TYPE),collapse=";")) %>%
   dplyr::arrange(desc(n_patients_total))
@@ -1051,7 +1051,8 @@ institution_summary <- svCompiledAssay %>%
   dplyr::summarise(n_subjects=dplyr::n_distinct(Tumor_Sample_Barcode),
                    n_assays_used=dplyr::n_distinct(SEQ_ASSAY_ID_mod),
                    assay_types=paste0(unique(assay_type),collapse=";")) %>%
-  dplyr::arrange(desc(n_subjects))
+  dplyr::arrange(desc(n_subjects)) %>%
+  dplyr::mutate(cntrString = paste0(SourceStudy," ", Center))
 outF <- paste0(outDir,"/institution_and_assay_sample_counts.txt")
 write.table(institution_summary,outF,row.names=F,quote=F,sep="\t")
 
@@ -1065,4 +1066,144 @@ arbitrary_variant_per_subject <- svCompiledAssay %>%
 # most common cancer types, race, age, demographic, etc
 
 # cancer type counts by center
-top_n_cancer_types <- arbitrary_variant_per_subject %>%  
+cancer_types_sample_cnts <- arbitrary_variant_per_subject %>% 
+  dplyr::group_by(level_1_disease) %>%
+  #dplyr::group_by(ONCOTREE_CODE) %>%
+  dplyr::summarise(n=n()) %>% 
+  dplyr::arrange(desc(n))
+
+nTopCancer <- 12
+top_n_cancer_types_cnts <- arbitrary_variant_per_subject %>% 
+  dplyr::filter(level_1_disease %in% c(cancer_types_sample_cnts$level_1_disease)[1:nTopCancer]) %>%
+  dplyr::group_by(SourceStudy,Center,level_1_disease) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::left_join(institution_summary,by=c("SourceStudy","Center")) %>%
+  dplyr::mutate(percOfCenter=100*n/n_subjects,
+                cntrString = paste0(SourceStudy," ", Center))
+
+# make heatmap of cancer type percentages for top N cancers
+library(circlize)
+#library(devtools)
+#install_github("jokergoo/ComplexHeatmap")
+library(ComplexHeatmap)
+
+#### scratch circlize example code
+# set.seed(123)
+# mat1 = rbind(cbind(matrix(rnorm(50*5, mean = 1), nr = 50), 
+#                    matrix(rnorm(50*5, mean = -1), nr = 50)),
+#              cbind(matrix(rnorm(50*5, mean = -1), nr = 50), 
+#                    matrix(rnorm(50*5, mean = 1), nr = 50))
+# )
+# rownames(mat1) = paste0("R", 1:100)
+# colnames(mat1) = paste0("C", 1:10)
+# mat1 = mat1[sample(100, 100), ] # randomly permute rows
+# split = sample(letters[1:5], 100, replace = TRUE)
+# spilt = factor(split, levels = letters[1:5])
+# col_fun1 = colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+# circos.heatmap(mat1, split = split, col = col_fun1)
+# circos.clear()
+# 
+# circos.par(start.degree = 90, gap.degree = 10)
+# circos.heatmap(mat1, split = split, col = col_fun1, track.height = 0.4, 
+#                bg.lwd = 2, bg.lty = 2, show.sector.labels = TRUE,
+#                rownames.side = "outside")
+# circos.clear()
+
+# add column names
+# circos.par(gap.after = c(2, 2, 2, 2, 10))
+# circos.heatmap(mat1, split = split, col = col_fun1, track.height = 0.4)
+# circos.track(track.index = get.current.track.index(), panel.fun = function(x, y) {
+#   if(CELL_META$sector.numeric.index == 5) { # the last sector
+#     cn = colnames(mat1)
+#     n = length(cn)
+#     circos.text(rep(CELL_META$cell.xlim[2], n) + convert_x(1, "mm"), 
+#                 1:n - 0.5, cn, 
+#                 cex = 0.5, adj = c(0, 0.5), facing = "inside")
+#   }
+# }, bg.border = NA)
+
+###
+topNwide <- top_n_cancer_types_cnts[,c("cntrString","level_1_disease","percOfCenter")] %>%
+  tidyr::pivot_wider(names_from = cntrString,values_from=percOfCenter) %>%
+  dplyr::mutate(across(everything(), ~ replace_na(., 0))) %>%
+  data.frame() 
+
+topNwideMtrx <- as.matrix(topNwide[,!colnames(topNwide) %in% c("level_1_disease")])
+orderStr <- gsub("[- ]", ".",  institution_summary$cntrString)
+topNwideMtrx <- topNwideMtrx[,head(orderStr,-1)]
+
+rownames(topNwideMtrx) <- topNwide$level_1_disease
+
+outF <-  paste0(outDir,"/cancer_type_by_institution_center.pdf")
+pdf(outF, width = 8, height = 6)
+ComplexHeatmap::Heatmap(topNwideMtrx) #, row_split = split)
+dev.off()
+
+
+outF <-  paste0(outDir,"/cancer_type_by_institution_center_circular.pdf")
+pdf(outF, width = 8, height = 8)
+col_fun1 = colorRamp2(c(0, 30, 60), c("snow2", "grey", "blue"))
+#circos.par(gap.after = c(2, 2, 2, 2, 10))
+#circos.heatmap(topNwideMtrx, col = col_fun1)
+#circos.par(gap.after = c(2, 2, 2, 2, 10))
+circos.par(gap.after = c(90))
+circos.heatmap(t(topNwideMtrx), col = col_fun1, track.height = 0.4, 
+               bg.lwd = 2, bg.lty = 2, show.sector.labels = TRUE,
+               cluster = F,
+               rownames.side = "outside")
+#circos.clear()
+
+#circos.heatmap(topNwideMtrx,col = col_fun1, track.height = 0.4)
+circos.track(track.index = get.current.track.index(), panel.fun = function(x, y) {
+  #if(CELL_META$sector.numeric.index == 5) { # the last sector
+    cn = rownames(topNwideMtrx)
+    n = length(cn)
+    circos.text(rep(CELL_META$cell.xlim[2], n) + convert_x(1, "mm"), 
+                1:n - 0.5, 
+                cn, 
+                cex = 0.5, 
+                adj = c(0, 0.5), 
+                facing = "inside")
+  #}
+}, bg.border = NA)
+circos.clear()
+dev.off()
+
+
+# bar chart for institution counts
+data <- institution_summary[,c("Center","n_subjects")]
+
+## make circular bar chart
+empty_bar <- 6
+
+# Add lines to the initial dataset
+to_add <- matrix(NA, empty_bar, ncol(data))
+colnames(to_add) <- colnames(data)
+data <- rbind(data, to_add)
+data$id <- seq(1, nrow(data))
+
+outF <-  paste0(outDir,"/cancer_type_by_institution_center_bar_counts.pdf")
+ggplot(data, aes(x=as.factor(id), y=n_subjects)) +       # Note that id is a factor. If x is numeric, there is some space between the first bar
+  
+  # This add the bars with a blue color
+  geom_bar(stat="identity", fill=alpha("wheat2", 0.4)) +
+  
+  # Limits of the plot = very important. The negative value controls the size of the inner circle, the positive one is useful to add size over each bar
+  ylim(-max(institution_summary$n_subjects),max(institution_summary$n_subjects)) +
+  
+  # Custom the theme: no axis title and no cartesian grid
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = unit(rep(-2,4), "cm")     # This remove unnecessary margin around plot
+  ) +
+  
+  # This makes the coordinate polar instead of cartesian.
+  coord_polar(start = 0,clip = "on",
+              direction=1)
+ggsave(outF,height = 8,width = 8)
+
+outRFile <- paste0(outDir,"/work_space_20240711.RData")
+save.image(file = outRFile)

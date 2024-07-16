@@ -1,0 +1,122 @@
+Jul-16 11:37:04.912 [main] DEBUG nextflow.cli.Launcher - $> nextflow run main.nf
+Jul-16 11:37:04.959 [main] DEBUG nextflow.cli.CmdRun - N E X T F L O W  ~  version 24.04.3
+Jul-16 11:37:04.970 [main] DEBUG nextflow.plugin.PluginsFacade - Setting up plugin manager > mode=prod; embedded=false; plugins-dir=/Users/larsonhogstrom/.nextflow/plugins; core-plugins: nf-amazon@2.5.2,nf-azure@1.6.0,nf-cloudcache@0.4.1,nf-codecommit@0.2.0,nf-console@1.1.3,nf-ga4gh@1.3.0,nf-google@1.13.2-patch1,nf-tower@1.9.1,nf-wave@1.4.2
+Jul-16 11:37:04.975 [main] INFO  o.pf4j.DefaultPluginStatusProvider - Enabled plugins: []
+Jul-16 11:37:04.976 [main] INFO  o.pf4j.DefaultPluginStatusProvider - Disabled plugins: []
+Jul-16 11:37:04.977 [main] INFO  org.pf4j.DefaultPluginManager - PF4J version 3.10.0 in 'deployment' mode
+Jul-16 11:37:04.984 [main] INFO  org.pf4j.AbstractPluginManager - No plugins
+Jul-16 11:37:04.997 [main] DEBUG nextflow.config.ConfigBuilder - Found config local: /Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/nextflow.config
+Jul-16 11:37:04.998 [main] DEBUG nextflow.config.ConfigBuilder - Parsing config file: /Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/nextflow.config
+Jul-16 11:37:05.013 [main] DEBUG n.secret.LocalSecretsProvider - Secrets store: /Users/larsonhogstrom/.nextflow/secrets/store.json
+Jul-16 11:37:05.015 [main] DEBUG nextflow.secret.SecretsLoader - Discovered secrets providers: [nextflow.secret.LocalSecretsProvider@1f12e153] - activable => nextflow.secret.LocalSecretsProvider@1f12e153
+Jul-16 11:37:05.017 [main] DEBUG nextflow.config.ConfigBuilder - Applying config profile: `standard`
+Jul-16 11:37:05.258 [main] DEBUG nextflow.cli.CmdRun - Applied DSL=2 by global default
+Jul-16 11:37:05.266 [main] DEBUG nextflow.cli.CmdRun - Launching `main.nf` [amazing_pare] DSL2 - revision: ba3144ac1d
+Jul-16 11:37:05.267 [main] DEBUG nextflow.plugin.PluginsFacade - Plugins default=[]
+Jul-16 11:37:05.267 [main] DEBUG nextflow.plugin.PluginsFacade - Plugins resolved requirement=[]
+Jul-16 11:37:05.292 [main] DEBUG nextflow.Session - Session UUID: 10cbfd0d-78b1-4d55-b118-79fd869b5c06
+Jul-16 11:37:05.293 [main] DEBUG nextflow.Session - Run name: amazing_pare
+Jul-16 11:37:05.293 [main] DEBUG nextflow.Session - Executor pool size: 11
+Jul-16 11:37:05.297 [main] DEBUG nextflow.file.FilePorter - File porter settings maxRetries=3; maxTransfers=50; pollTimeout=null
+Jul-16 11:37:05.313 [main] DEBUG nextflow.cli.CmdRun - 
+  Version: 24.04.3 build 5916
+  Created: 09-07-2024 19:35 UTC (15:35 EDT)
+  System: Mac OS X 14.5
+  Runtime: Groovy 4.0.21 on OpenJDK 64-Bit Server VM 21+35
+  Encoding: UTF-8 (UTF-8)
+  Process: 29291@Larsons-MacBook-Pro-2.local [127.0.0.1]
+  CPUs: 11 - Mem: 18 GB (45.3 MB) - Swap: 3 GB (1.5 GB) - Virtual threads ON
+Jul-16 11:37:05.319 [main] DEBUG nextflow.Session - Work-dir: /Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/work [Mac OS X]
+Jul-16 11:37:05.320 [main] DEBUG nextflow.Session - Script base path does not exist or is not a directory: /Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/bin
+Jul-16 11:37:05.326 [main] DEBUG nextflow.executor.ExecutorFactory - Extension executors providers=[]
+Jul-16 11:37:05.332 [main] DEBUG nextflow.Session - Observer factory: DefaultObserverFactory
+Jul-16 11:37:05.350 [main] DEBUG nextflow.cache.CacheFactory - Using Nextflow cache factory: nextflow.cache.DefaultCacheFactory
+Jul-16 11:37:05.357 [main] DEBUG nextflow.util.CustomPoolFactory - Creating virtual thread pool
+Jul-16 11:37:05.385 [main] DEBUG nextflow.Session - Session start
+Jul-16 11:37:05.387 [main] DEBUG nextflow.trace.TraceFileObserver - Workflow started -- trace file: /Users/larsonhogstrom/Documents/balder_analysis/output/nextflow_reports_20240716_113705/trace.txt
+Jul-16 11:37:05.485 [main] DEBUG nextflow.script.ScriptRunner - > Launching execution
+Jul-16 11:37:05.495 [main] INFO  nextflow.Nextflow - B A L D E R - N F   P I P E L I N E
+===================================
+data dir     : ../../data/
+database dir : ../../data/processed/balderResultsDb
+outdir       : ../../output/actionability_db_curration_20240712
+reports dir  : ../../output/nextflow_reports_20240716_113705
+
+Jul-16 11:37:05.520 [main] DEBUG nextflow.script.ProcessConfig - Config settings `withName:preprocess_data1` matches process preprocess_data1
+Jul-16 11:37:05.528 [main] DEBUG nextflow.executor.ExecutorFactory - << taskConfig executor: local
+Jul-16 11:37:05.528 [main] DEBUG nextflow.executor.ExecutorFactory - >> processorType: 'local'
+Jul-16 11:37:05.531 [main] DEBUG nextflow.executor.Executor - [warm up] executor > local
+Jul-16 11:37:05.533 [main] DEBUG n.processor.LocalPollingMonitor - Creating local task monitor for executor 'local' > cpus=11; memory=18 GB; capacity=11; pollInterval=100ms; dumpInterval=5m
+Jul-16 11:37:05.535 [main] DEBUG n.processor.TaskPollingMonitor - >>> barrier register (monitor: local)
+Jul-16 11:37:05.562 [main] DEBUG nextflow.Session - Workflow process names [dsl2]: preprocess_data1
+Jul-16 11:37:05.566 [main] WARN  nextflow.Session - There's no process matching config selector: preprocess_data2 -- Did you mean: preprocess_data1?
+Jul-16 11:37:05.566 [main] WARN  nextflow.Session - There's no process matching config selector: analysis_script1
+Jul-16 11:37:05.566 [main] WARN  nextflow.Session - There's no process matching config selector: analysis_script2
+Jul-16 11:37:05.566 [main] DEBUG nextflow.Session - Igniting dataflow network (1)
+Jul-16 11:37:05.567 [main] DEBUG nextflow.processor.TaskProcessor - Starting process > preprocess_data1
+Jul-16 11:37:05.567 [main] DEBUG nextflow.script.ScriptRunner - Parsed script files:
+  Script_c723f4a1eec3cec2: /Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/main.nf
+Jul-16 11:37:05.567 [main] DEBUG nextflow.script.ScriptRunner - > Awaiting termination 
+Jul-16 11:37:05.567 [main] DEBUG nextflow.Session - Session await
+Jul-16 11:37:05.642 [Task submitter] WARN  n.executor.BashWrapperBuilder - Task runtime metrics are not reported when using macOS without a container engine
+Jul-16 11:37:05.649 [Task submitter] DEBUG n.executor.local.LocalTaskHandler - Launch cmd line: /bin/bash -ue .command.run
+Jul-16 11:37:05.650 [Task submitter] INFO  nextflow.Session - [45/7c926a] Submitted process > preprocess_data1
+Jul-16 11:37:06.714 [Task monitor] DEBUG n.processor.TaskPollingMonitor - Task completed > TaskHandler[id: 1; name: preprocess_data1; status: COMPLETED; exit: 1; error: -; workDir: /Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/work/45/7c926a8ac762286bfbb4a551f23a57]
+Jul-16 11:37:06.717 [TaskFinalizer-1] DEBUG nextflow.processor.TaskProcessor - Handling unexpected condition for
+  task: name=preprocess_data1; work-dir=/Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/work/45/7c926a8ac762286bfbb4a551f23a57
+  error [nextflow.exception.ProcessFailedException]: Process `preprocess_data1` terminated with an error exit status (1)
+Jul-16 11:37:06.725 [TaskFinalizer-1] ERROR nextflow.processor.TaskProcessor - Error executing process > 'preprocess_data1'
+
+Caused by:
+  Process `preprocess_data1` terminated with an error exit status (1)
+
+
+Command executed:
+
+  Rscript /Users/larsonhogstrom/Documents/balder_analysis/balder/code/clinical_annotation_db_curration.r CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv ../../data/processed/balderResultsDb/balder-harmonized-biomarker-data-v20240712.sqlite
+
+Command exit status:
+  1
+
+Command output:
+  (empty)
+
+Command error:
+  
+  Attaching package: ‘dplyr’
+  
+  The following objects are masked from ‘package:stats’:
+  
+      filter, lag
+  
+  The following objects are masked from ‘package:base’:
+  
+      intersect, setdiff, setequal, union
+  
+  Warning message:
+  package ‘DBI’ was built under R version 4.3.3 
+  Warning message:
+  In scan(file = file, what = what, sep = sep, quote = quote, dec = dec,  :
+    EOF within quoted string
+  Error in file(file, "rt") : cannot open the connection
+  Calls: read.csv -> read.table -> file
+  In addition: Warning message:
+  In file(file, "rt") :
+    cannot open file '../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt': No such file or directory
+  Execution halted
+
+Work dir:
+  /Users/larsonhogstrom/Documents/balder_analysis/balder/workflow/work/45/7c926a8ac762286bfbb4a551f23a57
+
+Tip: you can replicate the issue by changing to the process work dir and entering the command `bash .command.run`
+Jul-16 11:37:06.729 [main] DEBUG nextflow.Session - Session await > all processes finished
+Jul-16 11:37:06.733 [TaskFinalizer-1] DEBUG nextflow.Session - Session aborted -- Cause: Process `preprocess_data1` terminated with an error exit status (1)
+Jul-16 11:37:06.741 [main] DEBUG nextflow.Session - Session await > all barriers passed
+Jul-16 11:37:06.741 [Task monitor] DEBUG n.processor.TaskPollingMonitor - <<< barrier arrives (monitor: local) - terminating tasks monitor poll loop
+Jul-16 11:37:06.744 [main] DEBUG n.trace.WorkflowStatsObserver - Workflow completed > WorkflowStats[succeededCount=0; failedCount=1; ignoredCount=0; cachedCount=0; pendingCount=0; submittedCount=0; runningCount=0; retriesCount=0; abortedCount=0; succeedDuration=0ms; failedDuration=1.9s; cachedDuration=0ms;loadCpus=0; loadMemory=0; peakRunning=1; peakCpus=2; peakMemory=4 GB; ]
+Jul-16 11:37:06.744 [main] DEBUG nextflow.trace.TraceFileObserver - Workflow completed -- saving trace file
+Jul-16 11:37:06.745 [main] DEBUG nextflow.trace.ReportObserver - Workflow completed -- rendering execution report
+Jul-16 11:37:07.312 [main] DEBUG nextflow.trace.TimelineObserver - Workflow completed -- rendering execution timeline
+Jul-16 11:37:07.377 [main] WARN  nextflow.dag.GraphvizRenderer - Graphviz is required to render the execution DAG in the given format -- See http://www.graphviz.org for more info.
+Jul-16 11:37:07.379 [main] DEBUG nextflow.cache.CacheDB - Closing CacheDB done
+Jul-16 11:37:07.386 [main] DEBUG nextflow.script.ScriptRunner - > Execution complete -- Goodbye

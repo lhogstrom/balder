@@ -4,11 +4,24 @@ library(DBI)
 library(RSQLite)
 library(phenOncoX)
 
+args <- commandArgs(trailingOnly = TRUE)
+
+# Check if the correct number of arguments are provided
+if (length(args) != 2) {
+  stop("Two arguments must be supplied (input file and output file).n", call. = FALSE)
+}
+
+# Step 2: Assign Arguments to Variables
+civicInFile <- args[1]
+outDbName <- args[2]
+# outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
+
+
 outDir <- "../../output/actionability_db_curration_20231220"
 
 ### load clinical evidence entries
-inFile <- "../../data/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
-clinical <- read.csv(inFile,sep="\t")
+#civicInFile <- "../../data/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
+clinical <- read.csv(civicInFile,sep="\t")
 clinical$chromosomeNum <- as.character(clinical$chromosome)
 clinical$chr <- paste0("chr",clinical$chromosomeNum)
 
@@ -316,10 +329,11 @@ write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
 ########################
 
 bDir <- "../../data/processed/balderResultsDb"
-timestamp <- format(Sys.time(), "%Y%m%d")
+#timestamp <- format(Sys.time(), "%Y%m%d")
+timestamp <- "20240712"
 
 # output db for harmonized data
-outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
+#outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite") # now defined with input args
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName)
 # output db for compiled raw data
 outDbName2 <- paste0(bDir,"/balder-compiled-raw-data-v",timestamp,".sqlite")
