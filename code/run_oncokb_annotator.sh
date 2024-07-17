@@ -11,13 +11,13 @@ ONCKBPATH=/Users/larsonhogstrom/Documents/code/oncokb-annotator
 
 # scratch subset of lines for debugging
 IMAF="../../output/clinical_annotation_matching_20240412/compiled_mutations_column_subset_all_studies_columns_979400_to_2174415.txt"
-OMAF="../../output/clinical_annotation_matching_20240412/compiled_mutations_column_subset_all_studies_columns_979400_to_2174415.oncokb.txt"
+OMAF="../../output/clinical_annotation_matching_20240412/scratch_compiled_mutations_column_subset_all_studies_columns_979400_to_2174415.oncokb.txt"
 
 
 #IC="data/example_clinical.txt"
 #OC="data/example_clinical.oncokb.txt"
-
-TOKEN="06693fc8-bbb2-4b75-ae0a-728fa96be6e9" #OncoKB API Token
+TFILE=../../data/ONCOKB_token.txt
+TOKEN=$(cat $TFILE)
 README="data/example_README.txt"
 
 #python $ONCKBPATH/MafAnnotator.py -i "$IMAF" -o "$OMAF" -c "$IC" -b "$TOKEN"

@@ -2,6 +2,7 @@
 
 // Define parameters
 params.processed_data_dir = '../../data/'
+params.base_dir = './'
 params.results_dir = '../../output/actionability_db_curration_20240712'
 params.dbDir = '../../data/processed/balderResultsDb'
 params.scripts_dir = '../code'
@@ -11,6 +12,7 @@ log.info """\
     B A L D E R - N F   P I P E L I N E
     ===================================
     data dir     : ${params.processed_data_dir}
+    base dir     : ${params.base_dir}
     database dir : ${params.dbDir}
     outdir       : ${params.results_dir}
     reports dir  : ${params.reports_dir}
@@ -22,7 +24,8 @@ log.info """\
 process preprocess_data1 {
     input:
     //path raw_file from "${params.processed_data_dir}/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
-    path raw_file 
+    //path raw_file 
+    path base_dir
 
     output:
     //path processed_file into processed_data1
@@ -31,7 +34,7 @@ process preprocess_data1 {
     script:
     //Rscript ${params.scripts_dir}/clinical_annotation_db_curration.r $raw_file ${params.dbDir}/balder-harmonized-biomarker-data-v20240712.sqlite
     """
-    Rscript $params.scripts1 $raw_file ${params.dbDir}/balder-harmonized-biomarker-data-v20240712.sqlite
+    Rscript $params.scripts1 $base_dir ${params.dbDir}/balder-harmonized-biomarker-data-v20240712.sqlite
     """
 }
 
@@ -93,7 +96,8 @@ process preprocess_data1 {
 
 // Workflow definition
 workflow {
-    preprocess_data1(file("${params.processed_data_dir}/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"))
+    //preprocess_data1(file("${params.processed_data_dir}/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"))
+    preprocess_data1(file("${params.base_dir}"))
     //preprocess_data2()
     //analysis_script1()
     //analysis_script2()

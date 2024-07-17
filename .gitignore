@@ -1,0 +1,3 @@
+workflow/work
+workflow/.nextflow/
+workflow/*.log*

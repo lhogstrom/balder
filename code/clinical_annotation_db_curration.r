@@ -12,15 +12,22 @@ if (length(args) != 2) {
 }
 
 # Step 2: Assign Arguments to Variables
-civicInFile <- args[1]
+baseDir <- args[1]
+
 outDbName <- args[2]
 # outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
 
+print("working dir:")
+print(getwd())
+
+print("base dir:")
+print(baseDir)
 
 outDir <- "../../output/actionability_db_curration_20231220"
 
 ### load clinical evidence entries
 #civicInFile <- "../../data/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
+civicInFile <- paste0(baseDir,"/../../data/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv")
 clinical <- read.csv(civicInFile,sep="\t")
 clinical$chromosomeNum <- as.character(clinical$chromosome)
 clinical$chr <- paste0("chr",clinical$chromosomeNum)
@@ -38,7 +45,8 @@ clinical$chr <- paste0("chr",clinical$chromosomeNum)
 
 # COMMAND ----------
 ### load MOAlmanac which is similar to CIViC
-inFile <- "../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt"
+#inFile <- "../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt"
+inFile <- paste0(baseDir,"../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt")
 moa <- read.csv(inFile,sep="\t")
 
 ### create actionability type assignemnts 

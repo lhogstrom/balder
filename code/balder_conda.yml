@@ -21,6 +21,6 @@ dependencies:
   - r-dplyr
   - r-tidyr
   - r-DBI
-postBuild:
-  - R -e "devtools::install_github('sigven/phenOncoX')"
-  - R -e "devtools::install_github('r-dbi/RSQLite')"
+    #postBuild:
+    #  - R -e "devtools::install_github('sigven/phenOncoX')"
+    #  - R -e "devtools::install_github('r-dbi/RSQLite')"
