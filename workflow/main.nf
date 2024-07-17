@@ -5,8 +5,11 @@ params.processed_data_dir = '../../data/'
 params.base_dir = './'
 params.results_dir = '../../output/actionability_db_curration_20240712'
 params.dbDir = '../../data/processed/balderResultsDb'
+params.dbName = "balder-harmonized-biomarker-data-v20240712.sqlite"
+params.dbName2 = "balder-compiled-raw-data-v20240712.sqlite"
 params.scripts_dir = '../code'
 params.scripts1 = file('../code/clinical_annotation_db_curration.r')
+params.scripts2 = file('../code/cancer_genomics_studies_db_curration.r')
 
 log.info """\
     B A L D E R - N F   P I P E L I N E
@@ -22,6 +25,8 @@ log.info """\
 
 // Define the preprocessing
 process preprocess_data1 {
+    //publishDir params.dbDir, mode:'copy'
+
     input:
     //path raw_file from "${params.processed_data_dir}/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
     //path raw_file 
@@ -29,15 +34,32 @@ process preprocess_data1 {
 
     output:
     //path processed_file into processed_data1
-    path "${params.dbDir}/balder-harmonized-biomarker-data-v20240712.sqlite"
+    path "$params.dbName"
 
     script:
-    //Rscript ${params.scripts_dir}/clinical_annotation_db_curration.r $raw_file ${params.dbDir}/balder-harmonized-biomarker-data-v20240712.sqlite
     """
-    Rscript $params.scripts1 $base_dir ${params.dbDir}/balder-harmonized-biomarker-data-v20240712.sqlite
+    Rscript $params.scripts1 $base_dir $params.dbName
     """
 }
 
+process preprocess_data2 {
+    publishDir params.dbDir, mode:'copy'
+
+    input:
+    path base_dir
+    path "$params.dbName"
+
+    output:
+    path "$params.dbName"
+
+    script:
+    """
+    Rscript $params.scripts2 $base_dir $params.dbName $params.dbName2
+    """
+}
+
+
+// Define the preprocessing
 //process preprocess_data1 {
 //    //publishDir("$params.results_folder", mode: "copy", overwrite: false)
 //
@@ -97,8 +119,8 @@ process preprocess_data1 {
 // Workflow definition
 workflow {
     //preprocess_data1(file("${params.processed_data_dir}/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"))
-    preprocess_data1(file("${params.base_dir}"))
-    //preprocess_data2()
+    sqldb = preprocess_data1(file("${params.base_dir}"))
+    sqldb2 = preprocess_data2(file("${params.base_dir}"),sqldb)
     //analysis_script1()
     //analysis_script2()
 }

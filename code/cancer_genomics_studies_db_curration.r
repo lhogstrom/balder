@@ -3,20 +3,43 @@ library(tidyr)
 library(DBI)
 library(RSQLite)
 
-outDir <- "../../output/actionability_db_curration_20231220"
+args <- commandArgs(trailingOnly = TRUE)
+
+# Check if the correct number of arguments are provided
+if (length(args) != 3) {
+  stop("Three arguments must be supplied", call. = FALSE)
+}
+
+# Step 2: Assign Arguments to Variables
+baseDir <- args[1] # should be the relative path to "balder/code" where this file is located
+outDbName <- args[2]
+outDbName2 <- args[3]
+# outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
+
+print("working dir:")
+print(getwd())
+
+print("base dir:")
+print(baseDir)
+
+outDir <- paste0(baseDir,"/../../output/actionability_db_curration_20240712")
+#outDbName <- paste0(baseDir,"/../../data/processed/balderResultsDb/balder-harmonized-biomarker-data-v20240712.sqlite")
+
+print("file for db connection:")
+print(outDbName)
 
 ################################
 ### establish db connection ###
 ################################
 
-bDir <- "../../data/processed/balderResultsDb"
+bDir <- paste0(baseDir,"/../../data/processed/balderResultsDb")
 timestamp <- format(Sys.time(), "%Y%m%d") 
 
 # output db for harmonized data
-outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
+#outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName)
 # output db for compiled raw data
-outDbName2 <- paste0(bDir,"/balder-compiled-raw-data-v",timestamp,".sqlite")
+#outDbName2 <- paste0(bDir,"/balder-compiled-raw-data-v",timestamp,".sqlite")
 rawDataDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName2)
 
 ######################################################
@@ -40,14 +63,14 @@ harmSampleCols <- c("SAMPLE_ID",
                     "SourceStudy")
 
 ### load hartwig data
-baseDir <- "../../data/Hartwig/data" 
-inFile <- paste0(baseDir,"/samples.txt")
+hartwigDir <- paste0(baseDir,"/../../data/Hartwig/data")
+inFile <- paste0(hartwigDir,"/samples.txt")
 sampleList <- read.csv(inFile,sep=",", header = F)
 
-inFile <- paste0(baseDir,"/metadata.tsv")
+inFile <- paste0(hartwigDir,"/metadata.tsv")
 hMeta <- read.csv(inFile,sep="\t")
 
-inFile <- paste0(baseDir,"/pre_biopsy_drugs.tsv")
+inFile <- paste0(hartwigDir,"/pre_biopsy_drugs.tsv")
 hTreatment <- read.csv(inFile,sep="\t")
 
 RSQLite::dbWriteTable(rawDataDb, "hartwigSampleInfo", sampleList, overwrite = T)
@@ -78,7 +101,7 @@ hSampleSubset$INT_SEQ_TO_CONTACT <- NA
 RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", hSampleSubset[,harmSampleCols],overwrite=T)
 
 ###  MSK-IMPACT
-inFile <- "../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt"
+inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt")
 patient.msk <- read.csv(inFile,sep="\t")
 RSQLite::dbWriteTable(rawDataDb, "mskMetadata", patient.msk, overwrite=T)
 
@@ -98,7 +121,7 @@ mskSampleSubset$INT_SEQ_TO_CONTACT <- NA
 RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", mskSampleSubset[,harmSampleCols],append=T)
 
 ### PANCAN
-inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt"
+inFile <- paste0(baseDir,"/../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt")
 pancanSampInfo <- read.csv(inFile,sep="\t",skip = 4)
 RSQLite::dbWriteTable(rawDataDb, "pancanMetadata", pancanSampInfo, overwrite=T)
 
@@ -117,11 +140,11 @@ pancanSampleSubset$INT_SEQ_TO_CONTACT <- NA
 RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", pancanSampleSubset[,harmSampleCols],append=T)
 
 ### AACR GENIE
-inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt"
+inFile <- paste0(baseDir,"/../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_patient.txt")
 patient.genie <- read.csv(inFile,sep="\t",skip=4)
 RSQLite::dbWriteTable(rawDataDb, "GeniePatientData", patient.genie, overwrite=T)
 
-inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt"
+inFile <- paste0(baseDir,"/../../data/AACR_Project_GENIE/Release_14p1_public/data_clinical_sample.txt")
 sample.genie <- read.csv(inFile,sep="\t",skip=4)
 RSQLite::dbWriteTable(rawDataDb, "GenieClinicalSampleData", sample.genie, overwrite=T)
 
@@ -162,11 +185,11 @@ genieSampleSubset$INT_Biopsy_To_Death <- NA
 
 RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", genieSampleSubset[,harmSampleCols],append=T)
 
-# to-do: compile minimal patient columns across data sets: age, gender, race, ethnicity 
+# to-do: compile minimal patient columns across data sets: age, gender, race, ethnicity
 
 ### MC3 TCGA
 # TCGA site codes
-inFile <- "../../data/curration/TCGA_tissue_source_site_codes.csv"
+inFile <- paste0(baseDir,"/../../data/curration/TCGA_tissue_source_site_codes.csv")
 tss <- read.csv(inFile,sep=",")
 RSQLite::dbWriteTable(harmonizedDb, "Mc3TCGASiteCodes", tss, overwrite=T)
 # barcode naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
@@ -181,7 +204,7 @@ RSQLite::dbWriteTable(harmonizedDb, "Mc3TCGASiteCodes", tss, overwrite=T)
 ################################################
 
 ### pancan
-inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_mutations.txt"
+inFile <- paste0(baseDir,"/../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_mutations.txt")
 svPancan <- read.csv(inFile,sep="\t",skip = 2)
 RSQLite::dbWriteTable(rawDataDb, "PancanPatientVarients", svPancan, overwrite=T)
 #inFile <- "../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_cna.txt"
@@ -191,29 +214,29 @@ RSQLite::dbWriteTable(rawDataDb, "PancanPatientVarients", svPancan, overwrite=T)
 #cyto <- read.csv(inFile,sep="\t")
 #
 
-### MSK-IMPACT 
-inFile <- "../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv"
+### MSK-IMPACT
+inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv")
 msk <- read.csv(inFile,sep="\t")
 msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
 RSQLite::dbWriteTable(rawDataDb, "Msk2017PatientVarients", msk, overwrite=T)
 
 ### MC3 TCGA
-inFile <- "../../data/mc3_tcga/scratch.sample.mc3.maf"
+inFile <- paste0(baseDir,"/../../data/mc3_tcga/scratch.sample.mc3.maf")
 #inFile <- "../../data/mc3_tcga/mc3.v0.2.8.PUBLIC.maf"
 mc3 <- read.csv(inFile,sep="\t") %>%
   dplyr::rename(StrandPlusMinus=STRAND)
 RSQLite::dbWriteTable(rawDataDb, "Mc3PatientVarients", mc3, overwrite=T)
 
 ### to-do: check to see if previous MSK-IMPACT data set is a subset of the newest GENIE dataset
-### add label for assay used - what does each panel capture? 
+### add label for assay used - what does each panel capture?
 
 ### AACR GENIE
-inFile <- "../../data/AACR_Project_GENIE/Release_14p1_public/data_mutations_extended.txt"
+inFile <- paste0(baseDir,"/../../data/AACR_Project_GENIE/Release_14p1_public/data_mutations_extended.txt")
 genie <- read.csv(inFile,sep="\t")
 RSQLite::dbWriteTable(rawDataDb, "GeniePatientVarients", genie, overwrite=T)
 
 ### Hartwig
-inFile <- "../../data/Hartwig/data/output_v4/hartwig_clinically_actionable_pcgr_entries.txt"
+inFile <- paste0(baseDir,"/../../data/Hartwig/data/output_v4/hartwig_clinically_actionable_pcgr_entries.txt")
 hartwig.pcgr <- read.csv(inFile,sep="\t")
 RSQLite::dbWriteTable(rawDataDb, "HartwigPatientVarients", hartwig.pcgr, overwrite=T)
 
@@ -221,41 +244,41 @@ RSQLite::dbWriteTable(rawDataDb, "HartwigPatientVarients", hartwig.pcgr, overwri
 harwigMod <- hartwig.pcgr %>%
   dplyr::mutate(Hugo_Symbol = SYMBOL,
                 Entrez_Gene_Id = ENTREZ_ID,
-                Center = NA, 
-                NCBI_Build = NA, 
-                Chromosome = CHROM, 
-                Start_Position = POS, 
-                End_Position = NA, 
-                Strand = NA, 
-                Variant_Classification = NA, 
-                Variant_Type = NA, 
-                Reference_Allele = REF, 
-                Tumor_Seq_Allele1 = NA, 
-                Tumor_Seq_Allele2 = ALT, 
-                dbSNP_RS = NA, 
-                dbSNP_Val_Status = NA, 
-                Tumor_Sample_Barcode = sample, 
-                Matched_Norm_Sample_Barcode = NA, 
-                Match_Norm_Seq_Allele1 = NA, 
-                Match_Norm_Seq_Allele2 = NA, 
-                Tumor_Validation_Allele1 = NA, 
-                Tumor_Validation_Allele2 = NA, 
-                Match_Norm_Validation_Allele1 = NA, 
-                Match_Norm_Validation_Allele2 = NA, 
-                Verification_Status = NA, 
-                Validation_Status = NA, 
-                Mutation_Status = NA, 
-                Sequencing_Phase = NA, 
-                Sequence_Source = NA, 
-                Validation_Method = NA, 
-                Score = NA, 
-                BAM_File = NA, 
-                Sequencer = NA, 
-                t_ref_count = NA, 
-                t_alt_count = NA, 
-                n_ref_count = NA, 
-                n_alt_count = NA, 
-                HGVSp_Short = HGVSp_short, 
+                Center = NA,
+                NCBI_Build = NA,
+                Chromosome = CHROM,
+                Start_Position = POS,
+                End_Position = NA,
+                Strand = NA,
+                Variant_Classification = NA,
+                Variant_Type = NA,
+                Reference_Allele = REF,
+                Tumor_Seq_Allele1 = NA,
+                Tumor_Seq_Allele2 = ALT,
+                dbSNP_RS = NA,
+                dbSNP_Val_Status = NA,
+                Tumor_Sample_Barcode = sample,
+                Matched_Norm_Sample_Barcode = NA,
+                Match_Norm_Seq_Allele1 = NA,
+                Match_Norm_Seq_Allele2 = NA,
+                Tumor_Validation_Allele1 = NA,
+                Tumor_Validation_Allele2 = NA,
+                Match_Norm_Validation_Allele1 = NA,
+                Match_Norm_Validation_Allele2 = NA,
+                Verification_Status = NA,
+                Validation_Status = NA,
+                Mutation_Status = NA,
+                Sequencing_Phase = NA,
+                Sequence_Source = NA,
+                Validation_Method = NA,
+                Score = NA,
+                BAM_File = NA,
+                Sequencer = NA,
+                t_ref_count = NA,
+                t_alt_count = NA,
+                n_ref_count = NA,
+                n_alt_count = NA,
+                HGVSp_Short = HGVSp_short,
                 Transcript_ID = NA)
 
 ###############################################################

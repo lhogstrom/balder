@@ -1,5 +1,7 @@
 # balder
-This is a research compendium that describes the incidence of clinically actionable biomarkers found across multiple cancer types.
+There are currently publicly available data for hundreds of thousands of tumor genomic profiles. Despite the importance of these scientific resources, there is a lack of open-source tools to harmonize and integrate somatic tumor profiles across various studies and technology types.
+
+Balder addresses this gap by harmonizing cancer profile data and offering analysis modules to derive insights from these data. Additionally, Balder functions as a comprehensive research compendium, detailing the incidence of clinically actionable biomarkers found across multiple cancer types.
 
 ## Scope 
 This work utilizes lists of clinically actionable cancer biomarkers curated by the Molecular Oncology Almanac (MOA), OncoKB, and CIViC. This work examines the frequency of these biomarkers in data obtained from multiple research studies and publicly available genomic data sets.

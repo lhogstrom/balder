@@ -8,12 +8,11 @@ args <- commandArgs(trailingOnly = TRUE)
 
 # Check if the correct number of arguments are provided
 if (length(args) != 2) {
-  stop("Two arguments must be supplied (input file and output file).n", call. = FALSE)
+  stop("Two arguments must be supplied", call. = FALSE)
 }
 
 # Step 2: Assign Arguments to Variables
-baseDir <- args[1]
-
+baseDir <- args[1] # should be the relative path to "balder/code" where this file is located
 outDbName <- args[2]
 # outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite")
 
@@ -23,7 +22,11 @@ print(getwd())
 print("base dir:")
 print(baseDir)
 
-outDir <- "../../output/actionability_db_curration_20231220"
+outDir <- paste0(baseDir,"/../../output/actionability_db_curration_20240712")
+#outDbName <- paste0(baseDir,"/../../data/processed/balderResultsDb/balder-harmonized-biomarker-data-v20240712.sqlite")
+
+print("file for db connection:")
+print(outDbName)
 
 ### load clinical evidence entries
 #civicInFile <- "../../data/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
@@ -46,7 +49,7 @@ clinical$chr <- paste0("chr",clinical$chromosomeNum)
 # COMMAND ----------
 ### load MOAlmanac which is similar to CIViC
 #inFile <- "../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt"
-inFile <- paste0(baseDir,"../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt")
+inFile <- paste0(baseDir,"/../../data/MOA/MOAlmanac_43018_2021_243_MOESM2_ESM.txt")
 moa <- read.csv(inFile,sep="\t")
 
 ### create actionability type assignemnts 
@@ -91,7 +94,7 @@ table(clinical$clinical.evidence.summary)
 
 # load OT code hierarchy  
 library(purrr)
-inFile <- "../../data/oncotree/tumor_types_2021.txt"
+inFile <- paste0(baseDir,"/../../data/oncotree/tumor_types_2021.txt")
 ot_code_full <- read.csv(inFile,sep="\t") %>%
   separate(level_1, into = c("level_1_disease", "ot_code_level_1"), sep = " \\(", remove = FALSE) %>%
   separate(level_2, into = c("level_2_disease", "ot_code_level_2"), sep = " \\(", remove = FALSE) %>%
@@ -226,9 +229,9 @@ moa.cType.cnt <- moa %>%
 
 ### Use MSK-IMPACT as cancer type anchor 
 
-inFile <- "../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv"
+inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv")
 msk <- read.csv(inFile,sep="\t")
-inFile <- "../../data/MSK_IMPACT/msk_impact_2017/data_clinical_sample.txt"
+inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/msk_impact_2017/data_clinical_sample.txt")
 patient.msk <- read.csv(inFile,sep="\t",skip = 4)
 msk <- msk %>% 
   dplyr::left_join(patient.msk,by=c("Tumor_Sample_Barcode"="SAMPLE_ID"))
@@ -252,7 +255,7 @@ write.table(CivicMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
 
 ### load refined map
 #mapF <- paste0(outDir,"/civic_to_msk_cancer_type_map.tsv")
-mapF <- "../../data/curration/civic_cancer_type_map.txt"
+mapF <- paste0(baseDir,"/../../data/curration/civic_cancer_type_map.txt")
 CivicMSKCancerTypeMap <- read.csv(mapF,sep="\t")
 clinical <- clinical %>%
   dplyr::left_join(CivicMSKCancerTypeMap,by=c("disease"="CivicCancerType"))
@@ -270,7 +273,7 @@ write.table(MoaMSKCancerTypeMap,mapF,row.names=F,quote=F,sep="\t")
 
 ### load refined map
 #mapF <-  paste0(outDir,"/moa_cancer_type_map.tsv")
-mapF <- "../../data/curration/moa_cancer_type_map.tsv"
+mapF <- paste0(baseDir,"/../../data/curration/moa_cancer_type_map.tsv")
 MoaMSKCancerTypeMap <- read.csv(mapF,sep="\t")
 MoaMSKCancerTypeMap$MoaCancerType <- as.character(MoaMSKCancerTypeMap$MoaCancerType)
 moa <- moa %>%
@@ -336,15 +339,17 @@ write.table(dbOtherAlt,outF,row.names=F,quote=F,sep="\t")
 ### write results db ###
 ########################
 
-bDir <- "../../data/processed/balderResultsDb"
-#timestamp <- format(Sys.time(), "%Y%m%d")
-timestamp <- "20240712"
+bDir <- paste0(baseDir,"/../../data/processed/balderResultsDb")
+timestamp <- format(Sys.time(), "%Y%m%d")
+#timestamp <- "20240712"
 
 # output db for harmonized data
 #outDbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v",timestamp,".sqlite") # now defined with input args
+
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName)
+print(harmonizedDb)
 # output db for compiled raw data
-outDbName2 <- paste0(bDir,"/balder-compiled-raw-data-v",timestamp,".sqlite")
+#outDbName2 <- paste0(bDir,"/balder-compiled-raw-data-v",timestamp,".sqlite")
 #rawDataDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName2)
 
 # Harmonized table
