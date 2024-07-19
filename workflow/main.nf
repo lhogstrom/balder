@@ -4,12 +4,17 @@
 params.processed_data_dir = '../../data/'
 params.base_dir = './'
 params.results_dir = '../../output/actionability_db_curration_20240712'
+params.oncokbToken = '../../data/ONCOKB_token.txt'
 params.dbDir = '../../data/processed/balderResultsDb'
 params.dbName = "balder-harmonized-biomarker-data-v20240712.sqlite"
 params.dbName2 = "balder-compiled-raw-data-v20240712.sqlite"
+params.tmpVarTbl = "compiled_mutations_column_subset_all_studies.txt"
+params.oncokbOut = "compiled_mutations_column_subset_all_studies.oncokb.txt"
 params.scripts_dir = '../code'
 params.scripts1 = file('../code/clinical_annotation_db_curration.r')
 params.scripts2 = file('../code/cancer_genomics_studies_db_curration.r')
+params.scripts3 = file('../code/setup_and_structure_oncokb_run.r')
+params.scripts4 = file('../code/run_oncokb_annotator.sh')
 
 log.info """\
     B A L D E R - N F   P I P E L I N E
@@ -25,15 +30,11 @@ log.info """\
 
 // Define the preprocessing
 process preprocess_data1 {
-    //publishDir params.dbDir, mode:'copy'
 
     input:
-    //path raw_file from "${params.processed_data_dir}/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"
-    //path raw_file 
     path base_dir
 
     output:
-    //path processed_file into processed_data1
     path "$params.dbName"
 
     script:
@@ -58,69 +59,42 @@ process preprocess_data2 {
     """
 }
 
+process oncokb_file_setup {
+    publishDir params.results_dir, mode:'copy'
 
-// Define the preprocessing
-//process preprocess_data1 {
-//    //publishDir("$params.results_folder", mode: "copy", overwrite: false)
-//
-//    input:
-//        val results_filepath
-//        val true_proportions_path
-//    output:
-//        path("deconvolution_analysis_*")
-//
-//    script:
-//    """
-//    Rscript $params.analyze_results_script -r $results_filepath -t $true_proportions_path
-//    """
-//}
+    input:
+    path base_dir
+    path "$params.dbName"
 
+    output:
+    path "$params.tmpVarTbl"
 
-//process preprocess_data2 {
-//    input:
-//    path processed_file from processed_data1
-//
-//    output:
-//    path processed_file2 into processed_data2
-//
-//    script:
-//    """
-//    Rscript ${params.scripts_dir}/preprocessing/preprocess_data2.R ${params.processed_data_dir}/processed_data1.csv ${params.processed_data_dir}/processed_data2.csv
-//    """
-//}
-//
-//// Define the analysis process
-//process analysis_script1 {
-//    input:
-//    path processed_file2 from processed_data2
-//
-//    output:
-//    path result1 into analysis1_result
-//
-//    script:
-//    """
-//    Rscript ${params.scripts_dir}/analysis/analysis_script1.R ${params.processed_data_dir}/processed_data2.csv ${params.results_dir}/result1.csv
-//    """
-//}
-//
-//process analysis_script2 {
-//    input:
-//    path processed_file2 from processed_data2
-//
-//    output:
-//    path result2 into analysis2_result
-//
-//    script:
-//    """
-//    Rscript ${params.scripts_dir}/analysis/analysis_script2.R ${params.processed_data_dir}/processed_data2.csv ${params.results_dir}/result2.png
-//    """
-//}
+    script:
+    """
+    Rscript $params.scripts3 $base_dir $params.dbName $params.tmpVarTbl
+    """
+}
 
-// Workflow definition
+process run_oncokb {
+    publishDir params.results_dir, mode:'copy'
+
+    input:
+    path "$params.tmpVarTbl"
+    path "$params.oncokbToken"
+
+    output:
+    path "$params.oncokbOut"
+
+    script:
+    """
+    bash $params.scripts3 $base_dir $params.dbName $params.tmpVarTbl
+    """
+}
+
 workflow {
-    //preprocess_data1(file("${params.processed_data_dir}/CIViC/CIViC-01-Dec-2021-ClinicalEvidenceSummaries.tsv"))
     sqldb = preprocess_data1(file("${params.base_dir}"))
     sqldb2 = preprocess_data2(file("${params.base_dir}"),sqldb)
-    //analysis_script1()
-    //analysis_script2()
+    tmpVarTbl = oncokb_file_setup(file("${params.base_dir}"),sqldb)
+    oncokbOut = run_oncokb(file("$params.tmpVarTbl"),file("$params.oncokbOut"),file("${params.oncokbToken}"))
 }
+
