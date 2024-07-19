@@ -2,8 +2,8 @@
 ONCKBPATH=/Users/larsonhogstrom/Documents/code/oncokb-annotator
 
 IMAF=$1
-OMAF=$2
-TFILE=$3
+TFILE=$2
+OMAF=$3
 
 # subset of columns, all HGVSp variants
 #IMAF="../../output/clinical_annotation_matching_20240412/compiled_mutations_column_subset_all_studies.txt"
