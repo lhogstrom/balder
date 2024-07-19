@@ -12,7 +12,8 @@ bDir <- "../../data/processed/balderResultsDb"
 dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
 
-svCompiled <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVariantTableWithSampleInfoOncokb')
+svCompiled <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM patientObservedVariantTableWithSampleInfoOncokb') %>%
+  dplyr::mutate(isHemeCancer=grepl("LYMPH",ot_code_level_1) | grepl("MYELOID",ot_code_level_1))
 aa.genome.representative <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariants')
 aa.genome.representative.oncokb <- RSQLite::dbGetQuery(harmonizedDb, 'SELECT * FROM representativeClinicalAnnotatedPatientVariantsWithOncoKB')
 
@@ -37,7 +38,8 @@ oncokbOnly <-svCompiled[svCompiled$balderVariantID %in% okBID,]
 ###########################
 
 inF <- "../../data/AACR_Project_GENIE/Release_15p0_public/assay_information.txt"
-assayInfo <- read.csv(inF,sep="\t")
+assayInfo <- read.csv(inF,sep="\t") %>%
+  dplyr::mutate(isHemePanel=grepl("HEME",SEQ_ASSAY_ID) | grepl("MYELOID",SEQ_ASSAY_ID))
 
 # SEQ_ASSAY_ID and SEQ_PIPELINE_ID
 seq_grp <- assayInfo %>%
@@ -169,8 +171,35 @@ assayCntRank <- svCompiled %>%
   dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>% 
   dplyr::arrange(desc(n)) %>%
   dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID")) 
-outF <- paste0(outDir,"/institution_seq_platoform.csv")
-write.table(assayCntRank,outF,row.names=F,quote=F,sep=",")
+outF <- paste0(outDir,"/institution_seq_platoform.txt")
+write.table(assayCntRank,outF,row.names=F,quote=F,sep="\t")
+
+assayCTypeCntRank <- svCompiled %>%
+  dplyr::mutate(isHemeCancer=grepl("LYMPH",ot_code_level_1) | grepl("MYELOID",ot_code_level_1)) %>%
+  dplyr::group_by(SEQ_ASSAY_ID_mod,isHemeCancer) %>%
+  dplyr::summarise(n=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n)) %>%
+  dplyr::left_join(assayInfo,by=c("SEQ_ASSAY_ID_mod"="SEQ_ASSAY_ID"))
+outF <- paste0(outDir,"/institution_seq_platoform_heme_status.txt")
+write.table(assayCTypeCntRank,outF,row.names=F,quote=F,sep="\t")
+assayCTypeCntRank$sampleHemeStatus <- "not heme cancer"
+assayCTypeCntRank[assayCTypeCntRank$isHemeCancer,"sampleHemeStatus"] <- "heme cancer"
+
+
+outF <-  paste0(outDir,"/institution_seq_platoform_heme_status.pdf")
+ggplot(assayCTypeCntRank,aes(x=SEQ_ASSAY_ID_mod,y=n,fill=isHemePanel))+
+  #geom_point()+
+  geom_bar(stat = "identity", position = "stack",alpha=.6) +
+  facet_grid(sampleHemeStatus ~ .)+
+  theme_bw()+
+  xlab("panel")+
+  ylab("number of subjects")+
+  #ylim(0,60)+
+  ggtitle(paste0("sample counts by panel type and heme status"))+
+  scale_fill_brewer(palette="Set1",drop=FALSE)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 10, width = 15)
 
 # select assays with >N patients
 assaySelect <- assayCntRank[assayCntRank$n>5000,"SEQ_ASSAY_ID_mod"][[1]]
@@ -329,7 +358,7 @@ for (x in colList[-length(colList)]) {
 nullCntsWide <- nullCnts %>%
   pivot_wider(names_from = column,values_from=proportion_null)
 outF <- paste0(outDir,"/null_entry_counts_v1.csv")
-write.table(na_proportions_raw,outF,row.names=F,quote=F,sep=",")
+write.table(nullCntsWide,outF,row.names=F,quote=F,sep=",")
 
 na_proportions_raw <- perSubjVar %>%
   dplyr::group_by(SEQ_ASSAY_ID_mod) %>% 
@@ -661,8 +690,8 @@ tree_rules_no_leaves <- tree_rules[tree_rules$var != "<leaf>", ]  # Exclude leaf
 print(tree_rules_no_leaves)
 
 # plot model
-plot(tree_model)
-text(tree_model, pretty = 0)
+#plot(tree_model)
+#text(tree_model, pretty = 0)
 
 # Predict on the test data
 predictions <- predict(tree_model, newdata = test_data)
@@ -675,26 +704,26 @@ cat("Mean Squared Error (MSE):", mse, "\n")
 ### Apply GLM model
 
 # Fit a GLM model
-glm_model <- glm(isOncoKbLevel1 ~ ONCOTREE_CODE + is_paired_end + library_selection + preservation_technique, data = train_data, family = gaussian)
-
-# Display the summary of the model
-summary(glm_model)
-
-# Extract coefficients and convert them to a data frame
-coefficients_df <- broom::tidy(glm_model)
-
-# Plot the coefficients
-outF <-  paste0(outDir,"/glm_coefficients.pdf")
-ggplot(coefficients_df, aes(x = term, y = estimate)) +
-  geom_bar(stat = "identity") +
-  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.2) +
-  labs(title = "GLM Coefficients",
-       x = "Predictors",
-       y = "Coefficient Estimate") +
-  theme_minimal()+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave(outF,height = 7, width = 7)
+# glm_model <- glm(isOncoKbLevel1 ~ ONCOTREE_CODE + is_paired_end + library_selection + preservation_technique, data = train_data, family = gaussian)
+# 
+# # Display the summary of the model
+# summary(glm_model)
+# 
+# # Extract coefficients and convert them to a data frame
+# coefficients_df <- broom::tidy(glm_model)
+# 
+# # Plot the coefficients
+# outF <-  paste0(outDir,"/glm_coefficients.pdf")
+# ggplot(coefficients_df, aes(x = term, y = estimate)) +
+#   geom_bar(stat = "identity") +
+#   geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.2) +
+#   labs(title = "GLM Coefficients",
+#        x = "Predictors",
+#        y = "Coefficient Estimate") +
+#   theme_minimal()+
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+#   theme(plot.title = element_text(hjust = 0.5))
+# ggsave(outF,height = 7, width = 7)
 
 ### try z-scoring proportion data by cancer type (or rank-based)
 
@@ -717,7 +746,7 @@ table(svCompiled$SEQ_ASSAY_ID %in% genomicInfo$SEQ_ASSAY_ID,svCompiled$SourceStu
 #
 length(unique(genomicInfo$Hugo_Symbol))
 
-# rank genes according to which genees were measured most frequently
+# rank genes according to which genes were measured most frequently
 geneRank <- genomicInfo %>%
   dplyr::group_by(Hugo_Symbol) %>%
   dplyr::summarise(n_assays=dplyr::n_distinct(SEQ_ASSAY_ID)) %>%
@@ -757,6 +786,7 @@ lvl1_gene_cnts <- lvl1_compiled %>%
   dplyr::summarise(n_patients=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
   dplyr::arrange(desc(n_patients))
 
+## all assays together (heme+solid+other)
 rank_lvl1 <- geneRank %>%
   dplyr::left_join(lvl1_gene_cnts,by="Hugo_Symbol") 
 rank_lvl1$n_patients[is.na(rank_lvl1$n_patients)] <- 0  
@@ -828,6 +858,71 @@ for (x in unexpected_hits$Hugo_Symbol) {
   print("--------")
 }
 
+### repeat plots above but split heme from solid tumor cancers
+geneRankHeme <- genomicInfo %>%
+  dplyr::left_join(assayInfo[,c("SEQ_ASSAY_ID","isHemePanel")]) %>%
+  dplyr::group_by(Hugo_Symbol,isHemePanel) %>%
+  dplyr::summarise(n_assays=dplyr::n_distinct(SEQ_ASSAY_ID)) %>%
+  dplyr::arrange(desc(n_assays))
+
+lvl1_gene_cnts_heme <- lvl1_compiled %>%
+  dplyr::group_by(Hugo_Symbol,isHemeCancer) %>%
+  dplyr::summarise(n_patients=dplyr::n_distinct(Tumor_Sample_Barcode)) %>%
+  dplyr::arrange(desc(n_patients)) 
+
+lvl1_hemRnak <-lvl1_gene_cnts_heme %>%
+  tidyr::pivot_wider(names_from = isHemeCancer,values_from=n_patients) %>%
+  dplyr::mutate(across(everything(), ~ if_else(is.na(.), 0, .))) %>%
+  dplyr::rename(notHeme=`FALSE`,
+                heme=`TRUE`) %>%
+  dplyr::mutate(hemeDiff = notHeme - heme) %>%
+  dplyr::arrange(hemeDiff)
+
+lvl1_gene_cnts_heme$Hugo_Symbol <- factor(lvl1_gene_cnts_heme$Hugo_Symbol, levels=lvl1_hemRnak$Hugo_Symbol)
+lvl1_gene_cnts_heme$heme_status <- "not heme cancer"
+lvl1_gene_cnts_heme[lvl1_gene_cnts_heme$isHemeCancer==T,"heme_status"] <- "heme cancer"
+
+### level 1 hits by gene
+outF <-  paste0(outDir,"/level1_hits_by_gene_and_heme_status.pdf")
+ggplot(lvl1_gene_cnts_heme, aes(x = Hugo_Symbol, y = n_patients)) +
+  geom_point()+
+  facet_grid(heme_status ~ .)+
+  #geom_bar(stat = "identity") +
+  labs(title = "Level 1 actionable mutations appearing most frequently in heme vs. other cancers",
+       x = "gene",
+       y = "number of patients") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  #theme(axis.text.x = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(outF,height = 7, width = 10)
+
+
+## 
+rank_lvl1_heme <- geneRankHeme %>%
+  dplyr::left_join(lvl1_hemRnak,by="Hugo_Symbol") %>%
+  tidyr::pivot_longer(c("n_assays","notHeme","heme"), names_to = "variable", values_to = "count")
+rank_lvl1_heme$Hugo_Symbol <- factor(rank_lvl1_heme$Hugo_Symbol, levels=lvl1_hemRnak$Hugo_Symbol)
+
+# outF <-  paste0(outDir,"/level1_hits_by_gene_and_heme_status_with_panel_info.pdf")
+# ggplot(rank_lvl1_heme, aes(x = Hugo_Symbol, y = count)) +
+#   geom_point()+
+#   facet_grid(variable ~ isHemePanel,scale="free_y")+
+#   #geom_bar(stat = "identity") +
+#   labs(title = "Level 1 actionable mutations appearing most frequently in heme vs. other cancers",
+#        x = "gene",
+#        y = "number of patients") +
+#   theme_minimal()+
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+#   #theme(axis.text.x = element_blank())+
+#   theme(plot.title = element_text(hjust = 0.5))
+# ggsave(outF,height = 7, width = 10)
+
+
+#rank_lvl1$n_patients_cumsum <- cumsum(rank_lvl1$n_patients)
+#rank_lvl1$cumsum_perc_patients <- 100 * (rank_lvl1$n_patients_cumsum / length(unique(svCompiled$Tumor_Sample_Barcode)))
+#rank_lvl1$gene_rank <- rownames(rank_lvl1)
+
 
 ### pairwise intersection of genes among panels
 runPairwiseCalc <- 0
@@ -868,6 +963,7 @@ if (runPairwiseCalc==1){
 geneList <- geneRank$Hugo_Symbol[1:16]
 
 posPanCntFull <- data.frame()
+geneOutDir <- paste0(outDir,"/gene_panel_coverage_plots")
 for (gene in geneList) {
   print(gene)
   # hit info
@@ -898,7 +994,7 @@ for (gene in geneList) {
   
   densityPlotDf <- rbind(intervalPlotDf,lvl1PosCnts[,colnames(intervalPlotDf)])
   
-  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,".pdf")
+  outF <-  paste0(geneOutDir,"/genomic_positions_of_panels_for_gene_",gene,".pdf")
   ggplot(intervalPlotDf, aes(x = coordinate, y = SEQ_ASSAY_ID, shape = pos)) +
     geom_point()+
     #facet_grid(type ~ ., scales="free_y")+
@@ -910,18 +1006,19 @@ for (gene in geneList) {
     theme(plot.title = element_text(hjust = 0.5))
   ggsave(outF,height = 18, width = 12)
   
-  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,"_with_counts.pdf")
-  ggplot(densityPlotDf, aes(x = coordinate, y = SEQ_ASSAY_ID, shape = pos, size=size,color=type)) +
-    geom_point(alpha=.2,size=1,color="black")+
-    geom_point(alpha=.6)+
-    #facet_grid(type ~ ., scales="free_y")+
-    labs(title = paste0(gene, "\nGenomic coordiantes tested by panel"),
-         x = "genomic coordinate",
-         y = "panel") +
-    theme_minimal()+
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-    theme(plot.title = element_text(hjust = 0.5))
-  ggsave(outF,height = 18, width = 12)
+  if (dim(lvl1PosCnts)[1] > 0) {
+    outF <-  paste0(geneOutDir,"/genomic_positions_of_panels_for_gene_",gene,"_with_counts.pdf")
+    ggplot(densityPlotDf, aes(x = coordinate, y = SEQ_ASSAY_ID, shape = pos, size=size,color=type)) +
+      geom_point(alpha=.2,size=1,color="black")+
+      geom_point(alpha=.6)+
+      #facet_grid(type ~ ., scales="free_y")+
+      labs(title = paste0(gene, "\nGenomic coordiantes tested by panel"),
+           x = "genomic coordinate",
+           y = "panel") +
+      theme_minimal()+
+      theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+      theme(plot.title = element_text(hjust = 0.5))
+    ggsave(outF,height = 18, width = 12)
   
   # create position-level evaluations
   lvl1PosCnts$temp_key <- 1
@@ -951,7 +1048,7 @@ for (gene in geneList) {
   posPanCnt$gene <- gene
   posPanCntFull <- rbind(posPanCntFull,posPanCnt)
   
-  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,"_freq_by_panel_coverage.pdf")
+  outF <-  paste0(geneOutDir,"/genomic_positions_of_panels_for_gene_",gene,"_freq_by_panel_coverage.pdf")
   ggplot(posPanCnt, aes(x = geneLevelFreq, y = percPanelsMeasuringGene, color=Feature_Type)) +
     geom_point(alpha=.6)+
     labs(title = paste0(gene, "\nActionable genomic positions tested by panel"),
@@ -962,7 +1059,7 @@ for (gene in geneList) {
     theme(plot.title = element_text(hjust = 0.5))
   ggsave(outF,height = 7, width = 7)
   
-  outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_",gene,"_freq_by_panel_coverage_log.pdf")
+  outF <-  paste0(geneOutDir,"/genomic_positions_of_panels_for_gene_",gene,"_freq_by_panel_coverage_log.pdf")
   ggplot(posPanCnt, aes(x = geneLevelFreq, y = percPanelsMeasuringGene, color=Feature_Type)) +
     geom_point(alpha=.6)+
     scale_x_log10(
@@ -976,7 +1073,8 @@ for (gene in geneList) {
     theme_minimal()+
     theme(plot.title = element_text(hjust = 0.5))
   ggsave(outF,height = 7, width = 7)
-  
+
+  }
 }
 
 outF <-  paste0(outDir,"/genomic_positions_of_panels_for_gene_1_freq_by_panel_coverage.pdf")
