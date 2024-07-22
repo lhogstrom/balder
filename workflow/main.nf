@@ -15,6 +15,7 @@ params.scripts1 = file('../code/clinical_annotation_db_curration.r')
 params.scripts2 = file('../code/cancer_genomics_studies_db_curration.r')
 params.scripts3 = file('../code/setup_and_structure_oncokb_run.r')
 params.scripts4 = file('../code/run_oncokb_annotator.sh')
+params.scripts5 = file('../code/load_oncokb_run.r')
 
 log.info """\
     B A L D E R - N F   P I P E L I N E
@@ -91,10 +92,27 @@ process run_oncokb {
     """
 }
 
+process load_oncokb_output {
+    publishDir params.results_dir, mode:'copy'
+    
+    input:
+    path base_dir
+    path "$params.dbName"
+
+    output:
+    path "$params.dbName"
+
+    script:
+    """
+    Rscript $params.scripts5 $base_dir $params.dbName
+    """
+}
+
 workflow {
     sqldb = preprocess_data1(file("${params.base_dir}"))
     sqldb2 = preprocess_data2(file("${params.base_dir}"),sqldb)
     tmpVarTbl = oncokb_file_setup(file("${params.base_dir}"),sqldb2)
-    oncokbOut = run_oncokb(tmpVarTbl,file("${params.oncokbToken}"))
+    //oncokbOut = run_oncokb(tmpVarTbl,file("${params.oncokbToken}"))
+    sqldb3 = load_oncokb_output(file("${params.base_dir}"),sqldb2)
 }
 

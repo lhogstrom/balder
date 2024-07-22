@@ -100,25 +100,25 @@ hSampleSubset$INT_SEQ_TO_CONTACT <- NA
 
 RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", hSampleSubset[,harmSampleCols],overwrite=T)
 
-###  MSK-IMPACT
-inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt")
-patient.msk <- read.csv(inFile,sep="\t")
-RSQLite::dbWriteTable(rawDataDb, "mskMetadata", patient.msk, overwrite=T)
-
-mskSampleSubset <- patient.msk[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE","TUMOR_PURITY")]
-mskSampleSubset$SourceStudy <- "MSK-IMPACT-2017-data"
-mskSampleSubset$SourceStudyInfo <- "MSK_IMPACT_TARGETED_n10129"
-mskSampleSubset$TUMOR_PURITY <- mskSampleSubset$TUMOR_PURITY*0.01
-mskSampleSubset$SAMPLE_TYPE_DETAILED <- NA
-mskSampleSubset$SEQ_ASSAY_ID <- NA
-mskSampleSubset$AGE_AT_SEQ_REPORT <- NA
-mskSampleSubset$STAGE <- NA
-mskSampleSubset$DEAD <- NA
-mskSampleSubset$INT_Biopsy_To_Death <- NA
-mskSampleSubset$INT_SEQ_TO_DEATH <- NA
-mskSampleSubset$INT_SEQ_TO_CONTACT <- NA
-
-RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", mskSampleSubset[,harmSampleCols],append=T)
+###  MSK-IMPACT 2017
+# inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/msk_impact_data_clinical_sample2.txt")
+# patient.msk <- read.csv(inFile,sep="\t")
+# RSQLite::dbWriteTable(rawDataDb, "mskMetadata", patient.msk, overwrite=T)
+# 
+# mskSampleSubset <- patient.msk[,c("SAMPLE_ID","CANCER_TYPE","CANCER_TYPE_DETAILED","ONCOTREE_CODE","SAMPLE_TYPE","TUMOR_PURITY")]
+# mskSampleSubset$SourceStudy <- "MSK-IMPACT-2017-data"
+# mskSampleSubset$SourceStudyInfo <- "MSK_IMPACT_TARGETED_n10129"
+# mskSampleSubset$TUMOR_PURITY <- mskSampleSubset$TUMOR_PURITY*0.01
+# mskSampleSubset$SAMPLE_TYPE_DETAILED <- NA
+# mskSampleSubset$SEQ_ASSAY_ID <- NA
+# mskSampleSubset$AGE_AT_SEQ_REPORT <- NA
+# mskSampleSubset$STAGE <- NA
+# mskSampleSubset$DEAD <- NA
+# mskSampleSubset$INT_Biopsy_To_Death <- NA
+# mskSampleSubset$INT_SEQ_TO_DEATH <- NA
+# mskSampleSubset$INT_SEQ_TO_CONTACT <- NA
+# 
+# RSQLite::dbWriteTable(harmonizedDb, "harmonizedSampleInfo", mskSampleSubset[,harmSampleCols],append=T)
 
 ### PANCAN
 inFile <- paste0(baseDir,"/../../data/ICGC_TCGA_WGS_2020/pancan_pcawg_2020/data_clinical_sample.txt")
@@ -215,10 +215,10 @@ RSQLite::dbWriteTable(rawDataDb, "PancanPatientVarients", svPancan, overwrite=T)
 #
 
 ### MSK-IMPACT
-inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv")
-msk <- read.csv(inFile,sep="\t")
-msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
-RSQLite::dbWriteTable(rawDataDb, "Msk2017PatientVarients", msk, overwrite=T)
+# inFile <- paste0(baseDir,"/../../data/MSK_IMPACT/impact_2017_annotated_per_variant.tsv")
+# msk <- read.csv(inFile,sep="\t")
+# msk$MAF <- 100*(msk$t_alt_count / (msk$t_ref_count+msk$t_alt_count))
+# RSQLite::dbWriteTable(rawDataDb, "Msk2017PatientVarients", msk, overwrite=T)
 
 ### MC3 TCGA
 inFile <- paste0(baseDir,"/../../data/mc3_tcga/scratch.sample.mc3.maf")
@@ -289,18 +289,19 @@ harwigMod <- hartwig.pcgr %>%
 pancanCols <- colnames(svPancan)
 genieCols <- colnames(genie)
 mc3Cols <- colnames(mc3)
-mskCols <- colnames(msk)
-uCols <- base::intersect(base::intersect(pancanCols,genieCols),base::intersect(mc3Cols,mskCols))
+#mskCols <- colnames(msk)
+#uCols <- base::intersect(base::intersect(pancanCols,genieCols),base::intersect(mc3Cols,mskCols))
+uCols <- base::intersect(base::intersect(pancanCols,genieCols),mc3Cols)
 
 varTable <- svPancan[,uCols]
 varTable$TVAF <- NA
 varTable$SourceStudy <- "PANCAN-WGS-data"
 RSQLite::dbWriteTable(harmonizedDb, "patientObservedVariantTable", varTable, overwrite=T)
 
-varTableMsk <- msk[,uCols]
-varTableMsk$TVAF <- NA
-varTableMsk$SourceStudy <- "MSK-IMPACT-2017-data"
-RSQLite::dbWriteTable(harmonizedDb, "patientObservedVariantTable", varTableMsk,append=T)
+# varTableMsk <- msk[,uCols]
+# varTableMsk$TVAF <- NA
+# varTableMsk$SourceStudy <- "MSK-IMPACT-2017-data"
+# RSQLite::dbWriteTable(harmonizedDb, "patientObservedVariantTable", varTableMsk,append=T)
 
 varTableMC3 <- mc3[,uCols]
 varTableMC3$TVAF <- NA

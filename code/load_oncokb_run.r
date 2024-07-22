@@ -12,11 +12,9 @@ if (length(args) != 2) {
 # Assign Arguments to Variables
 baseDir <- args[1] # should be the relative path to "balder/code" where this file is located
 dbName <- args[2]
-#bDir <- "../../data/processed/balderResultsDb"
-#dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 
 ### connect to result DB and get variants
-outDir <- paste0("../../output/clinical_annotation_matching_20240718")
+outDir <- paste0(baseDir,"/../../output/actionability_db_curration_20240712")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
 
 ##########################
@@ -57,9 +55,9 @@ oncokbRes <- read.csv(inFile,sep="\t") %>%
 RSQLite::dbWriteTable(harmonizedDb, "oncoKBAnnotatedVariantTable", oncokbRes, overwrite=T)
 
 # confirm oncokb entries match order of annotated variants
-table(oncokbRes$Tumor_Sample_Barcode == svCompiledPrelim$Tumor_Sample_Barcode,exclude=NULL)
-table(oncokbRes$HGVSp == svCompiledPrelim$HGVSp,exclude=NULL)
-table(oncokbRes$ONCOTREE_CODE == svCompiledPrelim$ONCOTREE_CODE,exclude=NULL)
+#table(oncokbRes$Tumor_Sample_Barcode == svCompiledPrelim$Tumor_Sample_Barcode,exclude=NULL)
+#table(oncokbRes$HGVSp == svCompiledPrelim$HGVSp,exclude=NULL)
+#table(oncokbRes$ONCOTREE_CODE == svCompiledPrelim$ONCOTREE_CODE,exclude=NULL)
 
 ### summary of oncokb results
 okbVariantSummary <- oncokbRes[oncokbRes$IS_SENS_DX_PX_OR_RESISTANCE==T,] %>%

@@ -14,11 +14,10 @@ if (length(args) != 3) {
 baseDir <- args[1] # should be the relative path to "balder/code" where this file is located
 dbName <- args[2]
 outVarTable <- args[3]
-#bDir <- "../../data/processed/balderResultsDb"
+#bDir <- "../../data/processed/balderResultsDb"/
 #dbName <- paste0(bDir,"/balder-harmonized-biomarker-data-v20240412.sqlite")
 
 ### connect to result DB and get variants
-outDir <- paste0("../../output/clinical_annotation_matching_20240718")
 harmonizedDb <- DBI::dbConnect(RSQLite::SQLite(), dbName)
 
 # load patient observed variants
