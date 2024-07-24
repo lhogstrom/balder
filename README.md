@@ -1,4 +1,4 @@
-# Balder mangages tumor profile data
+# Balder mangages tumor profile data and clinical actionability annotations
 There are currently publicly available data for hundreds of thousands of tumor genomic profiles. Despite the importance of these scientific resources, there is a lack of open-source tools to harmonize and integrate somatic tumor profiles across various studies and technology types.
 
 Balder addresses this gap by harmonizing cancer profile data and offering analysis modules to derive insights from these data. Additionally, Balder functions as a research compendium, detailing the incidence of clinically actionable biomarkers found across multiple cancer types.

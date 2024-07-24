@@ -1,9 +1,8 @@
 // main.nf
 
-// Define parameters
-params.processed_data_dir = '../../data/'
+params.input_data_dir = '../../data/'
 params.base_dir = './'
-params.results_dir = '../../output/actionability_db_curration_20240712'
+params.results_dir = '../../output/actionability_db_curration_20240712' // consider timestamp variable
 params.oncokbToken = file('../../data/ONCOKB_token.txt')
 params.dbDir = '../../data/processed/balderResultsDb'
 params.dbName = "balder-harmonized-biomarker-data-v20240712.sqlite"
@@ -11,16 +10,20 @@ params.dbName2 = "balder-compiled-raw-data-v20240712.sqlite"
 params.tmpVarTbl = "compiled_mutations_column_subset_all_studies.txt"
 params.oncokbOut = "compiled_mutations_column_subset_all_studies.oncokb.txt"
 params.scripts_dir = '../code'
+// scripts for primary data products
 params.scripts1 = file('../code/clinical_annotation_db_curration.r')
 params.scripts2 = file('../code/cancer_genomics_studies_db_curration.r')
 params.scripts3 = file('../code/setup_and_structure_oncokb_run.r')
 params.scripts4 = file('../code/run_oncokb_annotator.sh')
 params.scripts5 = file('../code/load_oncokb_run.r')
+params.scripts6 = file('../code/clinical_annotation_variant_matching.r')
+// scripts for reporting and analysis
+params.scripts7 = file('../code/incidence_of_clinically_annotated_mutations_reporting.r')
 
 log.info """\
     B A L D E R - N F   P I P E L I N E
     ===================================
-    data dir     : ${params.processed_data_dir}
+    data dir     : ${params.input_data_dir}
     base dir     : ${params.base_dir}
     database dir : ${params.dbDir}
     outdir       : ${params.results_dir}
@@ -108,11 +111,29 @@ process load_oncokb_output {
     """
 }
 
+
+process clinical_annotation_matching {
+    publishDir params.results_dir, mode:'copy'
+    
+    input:
+    path base_dir
+    path "$params.dbName"
+
+    output:
+    path "$params.dbName"
+
+    script:
+    """
+    Rscript $params.scripts6 $base_dir $params.dbName
+    """
+}
+
 workflow {
     sqldb = preprocess_data1(file("${params.base_dir}"))
     sqldb2 = preprocess_data2(file("${params.base_dir}"),sqldb)
     tmpVarTbl = oncokb_file_setup(file("${params.base_dir}"),sqldb2)
     //oncokbOut = run_oncokb(tmpVarTbl,file("${params.oncokbToken}"))
     sqldb3 = load_oncokb_output(file("${params.base_dir}"),sqldb2)
+    sqldb4 = clinical_annotation_matching(file("${params.base_dir}"),sqldb3)
 }
 
