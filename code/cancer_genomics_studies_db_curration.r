@@ -45,6 +45,7 @@ rawDataDb <- DBI::dbConnect(RSQLite::SQLite(), outDbName2)
 ######################################################
 ### patient and sample tables from various studies ###
 ######################################################
+
 # define output columns for harmonized sample info
 harmSampleCols <- c("SAMPLE_ID",
                     "CANCER_TYPE",

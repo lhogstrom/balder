@@ -473,6 +473,8 @@ technical_cols <- c("is_paired_end",
 
 modelCols <- c("perc",
                "ONCOTREE_CODE",
+               "SEQ_ASSAY_ID_mod",
+               "ONCOKB_HIGHEST_LEVEL_SUMMARY",
                clinical_cols,
                technical_cols)
 
@@ -496,6 +498,37 @@ set.seed(42)
 train_index <- caret::createDataPartition(data$perc, p = 0.8, list = FALSE)
 train_data <- data[train_index, ]
 test_data <- data[-train_index, ]
+
+# recursive binary splitting 
+# splitPoints <- data.frame() # will contain the split info: 1) variable and 2) split point
+# stop <- F
+# x <- 10
+# max_region_member_count <- 5
+# while (stop==F) {
+#   x <- x-1
+#   print(x)
+#   # propose a new split
+#   tmpRssScores <- data.frame()
+#   for (testCol in colsToTest) {
+#     splitPoints <- unique(train_data[,testCol])
+#     for (tSplit in splitPoints) {
+#       iStr <- paste0(testCol,"-",tSplit)
+#       tmpRssScores[iStr,"test col"] <- testCol
+#       tmpRssScores[iStr,"split point"] <- tSplit
+#       # check the current RSS of a proposed split
+#       tmpRssScores[iStr,"RSS"] <- testCol
+#     }
+#   }
+#   # identify top RSS score
+#   
+#   # remove from as possible split point in next iteration
+#   
+#   # check the max membership count of current regions
+#   if (x <= max_region_member_count) {
+#     stop <- T
+#   }
+# }
+
 
 # Define the formula for the model
 #formula <- perc ~ ONCOTREE_CODE + is_paired_end + library_selection + preservation_technique
