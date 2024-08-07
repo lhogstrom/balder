@@ -53,13 +53,13 @@ for (dir in tList$V1) {
 		print(".")
 		print(dim(df.subset))
 		print("----")
-		#write.table(df.oncokb, file = outMAF, append = TRUE, sep = "\t", row.names = FALSE, col.names = !file.exists(outMAF))
-		write.table(df.subset, file = outOncokb, append = TRUE, sep = "\t", row.names = FALSE, col.names = !file.exists(outOncokb))
+		write.table(df.subset, file = outMAF, append = TRUE, sep = "\t", quote =F, row.names = FALSE, col.names = !file.exists(outMAF))
+		#write.table(df.oncokb, file = outOncokb, append = TRUE, sep = "\t", quote=F, row.names = FALSE, col.names = !file.exists(outOncokb))
 		varSumRow <- data.frame(rawVariantCnt=c(dim(df.pcgr)[[1]]),
 				oncokbVariantCnt=c(dim(df.oncokb)[[1]]),
 				filteredVariantCnt=c(dim(df.subset)[[1]]),
 				sample=sample_name)
-		write.table(varSumRow, file = outTbl, append = TRUE, sep = "\t", row.names = FALSE, col.names = !file.exists(outTbl))
+		write.table(varSumRow, file = outTbl, append = TRUE, sep = "\t", quote=F, row.names = FALSE, col.names = !file.exists(outTbl))
 
 	}
 }
